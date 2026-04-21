@@ -1,0 +1,5 @@
+# ML Service — standalone dependencies
+tensorflow>=2.15.0
+Pillow>=10.2.0
+numpy>=1.26.0
+opencv-python-headless>=4.9.0

@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - mongo
+    volumes:
+      - ../backend/storage:/app/storage
+
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

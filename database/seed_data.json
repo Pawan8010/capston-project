@@ -1,0 +1,16 @@
+{
+  "users": [
+    { "uid": "demo_user_1", "email": "demo@livestock.ai", "displayName": "Demo User" }
+  ],
+  "predictions": [
+    {
+      "uid": "demo_user_1",
+      "result": {
+        "breed": "Holstein",
+        "confidence": 0.92,
+        "filename": "sample.jpg"
+      },
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}

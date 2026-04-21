@@ -1,0 +1,15 @@
+# .gitignore
+node_modules/
+__pycache__/
+*.pyc
+.env
+*.h5
+*.egg-info/
+dist/
+build/
+.vite/
+storage/uploads/*
+!storage/uploads/.gitkeep
+firebase-adminsdk.json
+*.log
+.DS_Store

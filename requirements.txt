@@ -1,0 +1,10 @@
+# Root-level requirements (for reference)
+# Backend-specific requirements are in backend/requirements.txt
+fastapi
+uvicorn
+motor
+firebase-admin
+tensorflow
+Pillow
+numpy
+python-dotenv
