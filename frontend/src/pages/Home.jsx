@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { ArrowRight, Star, ChevronDown } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 /* ─── Data ──────────────────────────────────────────────────── */
 const STATS = [
@@ -184,6 +185,7 @@ function RevealSection({ children, className = "", style = {} }) {
 /* ─── Component ────────────────────────────────────────────── */
 export default function Home() {
   const [activeStep, setActiveStep] = useState(0);
+  const { t } = useLanguage();
 
   useEffect(() => {
     const t = setInterval(() => setActiveStep((s) => (s + 1) % 3), 3000);
@@ -211,23 +213,22 @@ export default function Home() {
           </div>
 
           <h1 className="hero-title anim-fadeup" style={{ animationDelay: "0.1s" }}>
-            Smart <span className="gradient-text">Livestock Breed</span>
-            <br />Recognition System
+            {t("welcome")}
           </h1>
 
           <p className="hero-desc anim-fadeup" style={{ animationDelay: "0.2s" }}>
-            Upload a photo of your cattle or livestock and get instant AI-powered breed identification,
-            crossbreed composition analysis, and health recommendations.
+            {t("welcome_sub")}
           </p>
 
           <div className="hero-actions anim-fadeup" style={{ animationDelay: "0.3s" }}>
             <Link to="/upload" className="btn btn-primary btn-lg btn-glow">
-              🔬 Start Analysis <ArrowRight size={18} />
+              🔬 {t("get_started")} <ArrowRight size={18} />
             </Link>
-            <Link to="/signup" className="btn btn-ghost btn-lg">
-              Create Free Account
+            <Link to="/camera" className="btn btn-outline btn-lg">
+              📷 Live Scanner
             </Link>
           </div>
+
 
           {/* Trust badges */}
           <div className="hero-trust anim-fadeup" style={{ animationDelay: "0.4s" }}>

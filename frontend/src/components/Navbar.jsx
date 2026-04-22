@@ -2,22 +2,25 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useLanguage } from "../context/LanguageContext";
 import { logout } from "../services/auth";
 import { Menu, X, Sun, Moon } from "lucide-react";
+import LanguageToggle from "./LanguageToggle";
 
 export default function Navbar() {
   const { currentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
 
   const links = [
-    { to: "/",          label: "Home"      },
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/upload",    label: "Analyse"   },
-    { to: "/history",   label: "History"   },
+    { to: "/",          label: t("home")      },
+    { to: "/dashboard", label: t("dashboard") },
+    { to: "/upload",    label: t("upload")   },
+    { to: "/history",   label: t("history")   },
   ];
 
   const handleLogout = async () => {
@@ -56,7 +59,6 @@ export default function Navbar() {
 
           {/* Actions */}
           <div className="nav-actions">
-            {/* Theme Toggle */}
             <button
               className="theme-toggle"
               onClick={toggleTheme}
@@ -68,6 +70,8 @@ export default function Navbar() {
                 {theme === "dark" ? "Light" : "Dark"}
               </span>
             </button>
+
+            <LanguageToggle />
 
             {currentUser ? (
               <div style={{ position: "relative" }}>

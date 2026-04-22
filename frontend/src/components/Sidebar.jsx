@@ -2,15 +2,19 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { logout } from "../services/auth";
+import LanguageToggle from "./LanguageToggle";
 import {
-  LayoutDashboard, Upload, History, LogOut, ChevronRight, Cpu
+  LayoutDashboard, Upload, History, LogOut, ChevronRight, Cpu, Shield
 } from "lucide-react";
+
 
 const NAV = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/camera",    icon: Cpu,             label: "Live Scanner" },
   { to: "/upload",    icon: Upload,          label: "Analyse"   },
   { to: "/history",   icon: History,         label: "History"   },
 ];
+
 
 export default function Sidebar() {
   const location  = useLocation();
@@ -68,6 +72,11 @@ export default function Sidebar() {
           </div>
         </div>
 
+        <div style={{ padding: "1rem 1.5rem 0.5rem" }}>
+          <LanguageToggle />
+        </div>
+
+
         {/* Navigation */}
         <nav className="sidebar-nav">
           <div className="sidebar-label">Main Menu</div>
@@ -87,6 +96,20 @@ export default function Sidebar() {
               </Link>
             );
           })}
+
+          {currentUser?.role === "admin" && (
+            <Link 
+              to="/admin" 
+              className={`sidebar-link${location.pathname === "/admin" ? " active" : ""}`}
+              style={{ marginTop: "0.25rem" }}
+            >
+              <span className="sidebar-link-icon">
+                <Shield size={18} />
+              </span>
+              Admin Panel
+            </Link>
+          )}
+
 
           {/* AI Model info */}
           <div style={{ marginTop: "auto", paddingTop: "1rem" }}>

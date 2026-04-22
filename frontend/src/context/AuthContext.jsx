@@ -14,8 +14,13 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthChange(async (user) => {
       try {
         if (user) {
-          // Sync user with backend on login (best-effort, don't block auth)
-          try { await syncUserApi(user); } catch (_) {}
+          // Sync user with backend on login
+          try { 
+            const syncResponse = await syncUserApi(user); 
+            user.role = syncResponse.role || "farmer";
+          } catch (_) {
+            user.role = "farmer"; // fallback
+          }
         }
         setCurrentUser(user);
       } catch (err) {

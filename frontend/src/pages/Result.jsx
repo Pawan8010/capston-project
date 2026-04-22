@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
+import VoiceAssistant from "../components/VoiceAssistant";
 import { Download, Camera, History, Info, Zap } from "lucide-react";
 
 const BREED_INFO = {
@@ -253,6 +254,7 @@ export default function Result() {
           <button className="btn btn-ghost" onClick={handleDownload}><Download size={16} /> Download JSON</button>
         </div>
       </div>
+      <VoiceAssistant breedContext={result} />
     </div>
   );
 }

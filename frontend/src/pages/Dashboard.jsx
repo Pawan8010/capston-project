@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
+import VoiceAssistant from "../components/VoiceAssistant";
 import { useAuth } from "../context/AuthContext";
 import { getPredictionHistory } from "../services/api";
 import { Upload, History, BarChart2, TrendingUp, Cpu, Star } from "lucide-react";
@@ -192,6 +193,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      <VoiceAssistant />
     </div>
   );
 }

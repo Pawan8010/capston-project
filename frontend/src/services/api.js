@@ -30,32 +30,44 @@ api.interceptors.response.use(
 
 /**
  * Upload an image and get breed prediction
- * @param {File} imageFile - The image file to upload
- * @returns {Promise<Object>} - Prediction result
  */
 export const predictBreed = async (imageFile) => {
   const formData = new FormData();
   formData.append("file", imageFile);
-
-  const response = await api.post("/predict", formData, {
+  const response = await api.post("/predict/", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
 };
 
 /**
+ * Send a base64 image frame for real-time prediction
+ * @param {string} imageB64 - base64 data URI (data:image/jpeg;base64,...)
+ */
+export const realtimePredict = async (imageB64) => {
+  const response = await api.post("/realtime-predict/", { image_b64: imageB64 });
+  return response.data;
+};
+
+/**
+ * Send a voice/text query to the AI assistant
+ * @param {{ text, language, breed, confidence }} payload
+ */
+export const voiceQuery = async (payload) => {
+  const response = await api.post("/voice-query/", payload);
+  return response.data;
+};
+
+/**
  * Fetch prediction history for the current user
- * @returns {Promise<Array>} - Array of past predictions
  */
 export const getPredictionHistory = async () => {
-  const response = await api.get("/history");
+  const response = await api.get("/history/");
   return response.data;
 };
 
 /**
  * Get a single prediction record by ID
- * @param {string} id - The prediction record ID
- * @returns {Promise<Object>} - Single prediction record
  */
 export const getPredictionById = async (id) => {
   const response = await api.get(`/history/${id}`);
@@ -64,8 +76,6 @@ export const getPredictionById = async (id) => {
 
 /**
  * Sync user data with the backend after login
- * @param {Object} user - Firebase user object
- * @returns {Promise<Object>} - Synced user data
  */
 export const syncUser = async (user) => {
   const response = await api.post("/auth/sync", {
@@ -78,10 +88,26 @@ export const syncUser = async (user) => {
 
 /**
  * Delete a prediction record from history
- * @param {string} id - The prediction record ID
  */
 export const deletePrediction = async (id) => {
   await api.delete(`/history/${id}`);
 };
 
+/**
+ * Fetch admin dashboard statistics (includes breed distribution + daily counts)
+ */
+export const getAdminStats = async () => {
+  const response = await api.get("/admin/stats");
+  return response.data;
+};
+
+/**
+ * Fetch all users list (admin-only)
+ */
+export const getAdminUsers = async () => {
+  const response = await api.get("/admin/users");
+  return response.data;
+};
+
 export default api;
+

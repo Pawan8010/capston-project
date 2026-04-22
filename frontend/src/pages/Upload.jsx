@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
+import VoiceAssistant from "../components/VoiceAssistant";
 import { predictBreed } from "../services/api";
 import { Upload, Image, X, RefreshCw, Search, Camera, Cpu, CheckCircle2 } from "lucide-react";
 
@@ -219,6 +220,7 @@ export default function UploadPage() {
           </div>
         </form>
       </div>
+      <VoiceAssistant />
     </div>
   );
 }
