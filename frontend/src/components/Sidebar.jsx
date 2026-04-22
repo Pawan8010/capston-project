@@ -1,71 +1,134 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { logout } from "../services/auth";
+import {
+  LayoutDashboard, Upload, History, LogOut, ChevronRight, Cpu
+} from "lucide-react";
 
 const NAV = [
-  { to: "/dashboard", icon: "📊", label: "Dashboard" },
-  { to: "/upload",    icon: "🔬", label: "Analyse" },
-  { to: "/history",   icon: "📂", label: "History" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/upload",    icon: Upload,          label: "Analyse"   },
+  { to: "/history",   icon: History,         label: "History"   },
 ];
 
 export default function Sidebar() {
-  const location = useLocation();
+  const location  = useLocation();
   const navigate  = useNavigate();
   const { currentUser } = useAuth();
+  const [open, setOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
   };
 
+  const initials = currentUser?.displayName
+    ? currentUser.displayName.charAt(0).toUpperCase()
+    : currentUser?.email?.charAt(0).toUpperCase() || "U";
+
+  const name  = currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
+  const email = currentUser?.email || "";
+
   return (
-    <aside className="sidebar">
-      <div className="sidebar-brand">
-        <span style={{ fontSize: "1.6rem" }}>🐄</span>
-        <span className="gradient-text" style={{ fontWeight: 800 }}>LivestockAI</span>
-      </div>
+    <>
+      {/* Mobile overlay */}
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",
+            zIndex:99,display:"none"
+          }}
+          className="mobile-overlay"
+        />
+      )}
 
-      <div className="sidebar-section">
-        <div className="sidebar-label">Main Menu</div>
-        {NAV.map((n) => (
-          <Link
-            key={n.to}
-            to={n.to}
-            className={`sidebar-link${location.pathname === n.to ? " active" : ""}`}
-          >
-            <span className="sidebar-icon">{n.icon}</span>
-            {n.label}
-          </Link>
-        ))}
-      </div>
+      {/* Mobile toggle btn */}
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display:"none",
+          position:"fixed",top:"1rem",left:"1rem",zIndex:200,
+          background:"var(--bg-800)",border:"1px solid var(--border)",
+          borderRadius:"var(--radius-md)",padding:"0.5rem",color:"var(--white)"
+        }}
+        className="sidebar-mobile-btn"
+      >
+        ☰
+      </button>
 
-      <div className="sidebar-bottom">
-        {currentUser && (
-          <div style={{ marginBottom: "0.75rem" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", background: "var(--bg-700)", marginBottom: "0.5rem" }}>
-              <div className="nav-avatar" style={{ width: 28, height: 28, fontSize: "0.72rem" }}>
-                {currentUser.email?.charAt(0).toUpperCase()}
+      <aside className="sidebar">
+        {/* Brand */}
+        <div className="sidebar-brand">
+          <div className="sidebar-logo">🐄</div>
+          <div className="sidebar-brand-text">
+            <h1>LivestockAI</h1>
+            <p>Smart Recognition</p>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="sidebar-nav">
+          <div className="sidebar-label">Main Menu</div>
+          {NAV.map(({ to, icon: Icon, label }) => {
+            const active = location.pathname === to || location.pathname.startsWith(to + "/");
+            return (
+              <Link key={to} to={to} className={`sidebar-link${active ? " active" : ""}`}>
+                <span className="sidebar-link-icon">
+                  <Icon size={18} />
+                </span>
+                {label}
+                {active && (
+                  <span style={{ marginLeft: "auto" }}>
+                    <ChevronRight size={14} />
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+
+          {/* AI Model info */}
+          <div style={{ marginTop: "auto", paddingTop: "1rem" }}>
+            <div
+              className="card card-green"
+              style={{ padding: "0.85rem", marginTop: "1rem" }}
+            >
+              <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"0.35rem" }}>
+                <Cpu size={14} style={{ color:"var(--green-400)" }} />
+                <span style={{ fontSize:"0.75rem", fontWeight:700 }}>MobileNetV2</span>
               </div>
-              <div>
-                <div style={{ fontSize: "0.78rem", fontWeight: 600, lineHeight: 1 }}>
-                  {currentUser.displayName || "User"}
+              <p style={{ fontSize:"0.68rem", color:"var(--slate-400)", lineHeight:1.5 }}>
+                94.2% accuracy · 5 breeds
+              </p>
+              <span className="badge badge-green" style={{ marginTop:"0.5rem", fontSize:"0.62rem" }}>
+                v1.0 Active
+              </span>
+            </div>
+          </div>
+        </nav>
+
+        {/* Bottom: user + logout */}
+        <div className="sidebar-bottom">
+          {currentUser && (
+            <div className="sidebar-user">
+              <div className="sidebar-avatar">{initials}</div>
+              <div style={{ minWidth:0, flex:1 }}>
+                <div className="sidebar-user-name" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {name}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "var(--slate-500)", marginTop: 2 }}>
-                  {currentUser.email}
+                <div className="sidebar-user-email" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {email}
                 </div>
               </div>
             </div>
-          </div>
-        )}
-        <button
-          onClick={handleLogout}
-          className="sidebar-link"
-          style={{ width: "100%", background: "none", border: "none", cursor: "pointer", color: "#f87171" }}
-        >
-          <span className="sidebar-icon">🚪</span> Sign Out
-        </button>
-      </div>
-    </aside>
+          )}
+          <button onClick={handleLogout} className="sidebar-logout">
+            <LogOut size={16} />
+            Sign Out
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
