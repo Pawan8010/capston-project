@@ -10,6 +10,7 @@ db.createCollection("users", {
         uid: { bsonType: "string" },
         email: { bsonType: "string" },
         displayName: { bsonType: "string" },
+        role: { bsonType: "string", enum: ["farmer", "admin"] },
         createdAt: { bsonType: "date" }
       }
     }
