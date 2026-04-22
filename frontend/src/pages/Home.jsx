@@ -138,17 +138,13 @@ function AnimCounter({ target }) {
 
 /* ─── Floating particles ──────────────────────────────────────── */
 function Particles() {
-  const PARTICLE_TYPES = ['🐄', '🐂', '🐃', '🐑', '🐐', '🐓', '🐖', '✨', '🌾', '🍃'];
-  const particles = Array.from({ length: 25 }, (_, i) => ({
+  const particles = Array.from({ length: 20 }, (_, i) => ({
     id: i,
-    icon: PARTICLE_TYPES[Math.floor(Math.random() * PARTICLE_TYPES.length)],
-    size: Math.random() * 24 + 16,
+    size: Math.random() * 4 + 2,
     left: Math.random() * 100,
-    delay: Math.random() * 10,
-    duration: Math.random() * 15 + 15,
-    opacity: Math.random() * 0.15 + 0.05,
-    dir: Math.random() > 0.5 ? 1 : -1,
-    rotDuration: Math.random() * 15 + 15,
+    delay: Math.random() * 8,
+    duration: Math.random() * 10 + 8,
+    opacity: Math.random() * 0.4 + 0.1,
   }));
 
   return (
@@ -156,25 +152,16 @@ function Particles() {
       {particles.map((p) => (
         <div
           key={p.id}
-          className="particle-wrapper"
+          className="particle"
           style={{
+            width: p.size,
+            height: p.size,
             left: `${p.left}%`,
             animationDelay: `${p.delay}s`,
             animationDuration: `${p.duration}s`,
             opacity: p.opacity,
           }}
-        >
-          <div
-            className="particle-icon"
-            style={{
-              fontSize: `${p.size}px`,
-              animationDuration: `${p.rotDuration}s`,
-              animationDirection: p.dir > 0 ? 'normal' : 'reverse'
-            }}
-          >
-            {p.icon}
-          </div>
-        </div>
+        />
       ))}
     </div>
   );
