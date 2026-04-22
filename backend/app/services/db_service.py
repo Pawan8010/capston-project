@@ -11,6 +11,12 @@ async def get_history(uid: str):
     records = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
+        doc["id"] = doc["_id"]   # frontend uses item.id
+        # Flatten result fields to top level for convenience
+        if "result" in doc:
+            for k, v in doc["result"].items():
+                if k not in doc:
+                    doc[k] = v
         records.append(doc)
     return records
 
