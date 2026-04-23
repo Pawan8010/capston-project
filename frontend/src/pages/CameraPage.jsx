@@ -11,9 +11,11 @@ import CameraScanner from "../components/CameraScanner";
 import VoiceAssistant from "../components/VoiceAssistant";
 import { useNavigate } from "react-router-dom";
 import { Camera, Upload, Info } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function CameraPage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [lastPrediction, setLastPrediction] = useState(null);
   const [capturedImage,  setCapturedImage]  = useState(null);
 
@@ -36,24 +38,24 @@ export default function CameraPage() {
         <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
           <div>
             <div className="breadcrumb">
-              <Link to="/dashboard" className="breadcrumb-link" style={{ color: "var(--slate-500)", fontSize: "0.82rem" }}>Dashboard</Link>
+              <Link to="/dashboard" className="breadcrumb-link" style={{ color: "var(--slate-500)", fontSize: "0.82rem" }}>{t("dashboard")}</Link>
               <span className="breadcrumb-sep">/</span>
-              <span style={{ color: "var(--green-400)", fontSize: "0.82rem", fontWeight: 600 }}>Live Scanner</span>
+              <span style={{ color: "var(--green-400)", fontSize: "0.82rem", fontWeight: 600 }}>{t("live_scanner")}</span>
             </div>
             <h2 style={{ fontSize: "1.6rem", marginBottom: "0.3rem" }}>
-              📷 Real-Time <span className="gradient-text">Camera Scanner</span>
+              📷 {t("live_scanner")}
             </h2>
             <p style={{ fontSize: "0.875rem", color: "var(--slate-400)" }}>
-              Point your camera at livestock for instant AI breed identification
+              {t("camera_desc")}
             </p>
           </div>
           <div style={{ display: "flex", gap: "0.75rem" }}>
             <Link to="/upload" className="btn btn-outline">
-              <Upload size={16} /> Upload Instead
+              <Upload size={16} /> {t("upload_instead")}
             </Link>
             {lastPrediction && (
               <button className="btn btn-primary" onClick={handleViewResult}>
-                <Info size={16} /> View Full Result
+                <Info size={16} /> {t("view_full_result")}
               </button>
             )}
           </div>
@@ -66,9 +68,9 @@ export default function CameraPage() {
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Camera size={16} style={{ color: "var(--green-400)" }} />
-              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>Live Feed</span>
+              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t("live_feed")}</span>
               <span className="badge badge-green" style={{ marginLeft: "auto", fontSize: "0.65rem" }}>
-                AI Active
+                {t("ai_active")}
               </span>
             </div>
             <div style={{ padding: "1.25rem" }}>
@@ -83,31 +85,31 @@ export default function CameraPage() {
             {lastPrediction ? (
               <div className="card card-green">
                 <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--green-400)", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Latest Detection
+                  {t("latest_detection")}
                 </div>
                 <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🐄</div>
                 <div style={{ fontWeight: 800, fontSize: "1.3rem", marginBottom: "0.25rem" }}>
                   {lastPrediction.primary_breed?.replace("_", " ")}
                 </div>
                 <div style={{ fontSize: "0.85rem", color: "var(--slate-400)", marginBottom: "0.75rem" }}>
-                  Confidence: <strong style={{ color: "var(--green-400)" }}>
+                  {t("confidence")}: <strong style={{ color: "var(--green-400)" }}>
                     {Math.round((lastPrediction.confidence || 0) * 100)}%
                   </strong>
                 </div>
                 {lastPrediction.secondary_breed && (
                   <div style={{ fontSize: "0.78rem", color: "var(--slate-500)", marginBottom: "0.75rem" }}>
-                    Secondary: {lastPrediction.secondary_breed.replace("_", " ")}
+                    {t("secondary")}: {lastPrediction.secondary_breed.replace("_", " ")}
                   </div>
                 )}
                 <button className="btn btn-primary btn-sm w-full" onClick={handleViewResult}>
-                  <Info size={14} /> View Full Details
+                  <Info size={14} /> {t("view_full_details")}
                 </button>
               </div>
             ) : (
               <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
                 <div style={{ fontSize: "3rem", marginBottom: "0.75rem" }}>🔭</div>
                 <p style={{ color: "var(--slate-400)", fontSize: "0.875rem" }}>
-                  Start the camera to see live predictions here
+                  {t("start_camera_to_see")}
                 </p>
               </div>
             )}
@@ -115,13 +117,13 @@ export default function CameraPage() {
             {/* How it works */}
             <div className="card">
               <div style={{ fontWeight: 700, fontSize: "0.875rem", marginBottom: "0.85rem" }}>
-                📖 How It Works
+                📖 {t("how_it_works")}
               </div>
               {[
-                { step: "1", text: "Click 'Start Camera' to open webcam" },
-                { step: "2", text: "Point camera at your livestock" },
-                { step: "3", text: "AI analyses every 2.5 seconds automatically" },
-                { step: "4", text: "View full report by clicking 'View Full Details'" },
+                { step: "1", text: t("how_step1") },
+                { step: "2", text: t("how_step2") },
+                { step: "3", text: t("how_step3") },
+                { step: "4", text: t("how_step4") },
               ].map(({ step, text }) => (
                 <div key={step} style={{ display: "flex", gap: "0.75rem", marginBottom: "0.65rem", alignItems: "flex-start" }}>
                   <div style={{
@@ -139,12 +141,12 @@ export default function CameraPage() {
 
             {/* Tips */}
             <div className="card card-amber">
-              <div style={{ fontWeight: 700, fontSize: "0.875rem", marginBottom: "0.75rem" }}>💡 Tips for Best Results</div>
+              <div style={{ fontWeight: 700, fontSize: "0.875rem", marginBottom: "0.75rem" }}>💡 {t("tips_best_results")}</div>
               {[
-                "Use good lighting (natural light is best)",
-                "Ensure the full animal body is visible",
-                "Avoid blurry or shaky camera",
-                "Hold camera at eye level with the animal",
+                t("tip1"),
+                t("tip2"),
+                t("tip3"),
+                t("tip4"),
               ].map((tip) => (
                 <div key={tip} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.78rem", color: "var(--slate-300)" }}>
                   <span>✓</span> <span>{tip}</span>

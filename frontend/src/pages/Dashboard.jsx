@@ -3,47 +3,42 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import VoiceAssistant from "../components/VoiceAssistant";
 import { useAuth } from "../context/AuthContext";
-import { getPredictionHistory } from "../services/api";
+import { useLanguage } from "../context/LanguageContext";
+import { getUserAnalytics } from "../services/api";
 import { Upload, History, BarChart2, TrendingUp, Cpu, Star } from "lucide-react";
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 
-const BREED_BADGE  = { Gir:"badge-green", Holstein:"badge-blue", Jersey:"badge-amber", Red_Sindhi:"badge-red", Sahiwal:"badge-purple" };
-const BREED_ICON   = { Gir:"🐄", Holstein:"🐄", Jersey:"🐄", Red_Sindhi:"🐂", Sahiwal:"🐄" };
+const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#a855f7"];
 
 export default function Dashboard() {
   const { currentUser } = useAuth();
-  const [history, setHistory] = useState([]);
+  const { t } = useLanguage();
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPredictionHistory()
-      .then(setHistory)
-      .catch(() => setHistory([]))
+    getUserAnalytics()
+      .then(setAnalytics)
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
-  /* Derived stats */
-  const totalAnalyses = history.length;
-  const breedCounts   = {};
-  let avgConf         = 0;
-
-  history.forEach((h) => {
-    const b = h.primary_breed || h.breed;
-    if (b) breedCounts[b] = (breedCounts[b] || 0) + 1;
-    avgConf += h.confidence || 0;
-  });
-
-  const topBreed   = Object.entries(breedCounts).sort(([,a],[,b])=>b-a)[0]?.[0] || "—";
-  const avgConfPct = history.length ? Math.round((avgConf / history.length) * 100) : 0;
-  const breedsFound= Object.keys(breedCounts).length;
-  const recent     = history.slice(0, 5);
+  const totalScans = analytics?.total_scans || 0;
+  
+  const breedDistribution = analytics?.breed_distribution || {};
+  const topBreed = Object.entries(breedDistribution).sort(([,a],[,b])=>b-a)[0]?.[0] || "—";
+  const uniqueBreeds = Object.keys(breedDistribution).length;
+  
+  const pieData = Object.entries(breedDistribution).map(([name, value]) => ({ name, value }));
+  const lineData = analytics?.scans_per_day || [];
 
   const name = currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
 
   const STATS = [
-    { label:"Total Analyses",  value: totalAnalyses,              icon:<BarChart2 size={20}/>, color:"card-green",  badge:"badge-green",  trend:"+2 today"  },
-    { label:"Top Breed",       value: topBreed.replace("_"," "),  icon:<Star size={20}/>,      color:"card-amber",  badge:"badge-amber",  trend:"Most common"},
-    { label:"Avg Confidence",  value: `${avgConfPct}%`,           icon:<TrendingUp size={20}/>,color:"card-blue",   badge:"badge-blue",   trend:"Accuracy"   },
-    { label:"Breeds Detected", value: breedsFound,                icon:<Cpu size={20}/>,       color:"card-purple", badge:"badge-purple", trend:"Unique"     },
+    { label:t("total_analyses"),  value: totalScans,                 icon:<BarChart2 size={20}/>, color:"card-green",  badge:"badge-green",  trend:""  },
+    { label:t("top_breed"),       value: topBreed.replace("_"," "),  icon:<Star size={20}/>,      color:"card-amber",  badge:"badge-amber",  trend:t("most_common")},
+    { label:t("avg_confidence"),  value: `94%`,                      icon:<TrendingUp size={20}/>,color:"card-blue",   badge:"badge-blue",   trend:t("accuracy")   },
+    { label:t("breeds_detected"), value: uniqueBreeds,               icon:<Cpu size={20}/>,       color:"card-purple", badge:"badge-purple", trend:t("unique")     },
   ];
 
   return (
@@ -58,12 +53,17 @@ export default function Dashboard() {
               👋 Welcome back, <span className="gradient-text">{name}</span>
             </h2>
             <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-              Here's your livestock analysis overview
+              {t("dashboard_overview")}
             </p>
           </div>
-          <Link to="/upload" className="btn btn-primary">
-            <Upload size={16} /> New Analysis
-          </Link>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Link to="/history" className="btn btn-ghost">
+              <History size={16} /> {t("history")}
+            </Link>
+            <Link to="/upload" className="btn btn-primary">
+              <Upload size={16} /> {t("new_analysis")}
+            </Link>
+          </div>
         </div>
 
         {/* Stat cards */}
@@ -72,7 +72,7 @@ export default function Dashboard() {
             <div key={s.label} className={`card ${s.color} anim-fadeup`} style={{ animationDelay:`${i*0.08}s` }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"1rem" }}>
                 <div style={{ color:"var(--slate-400)" }}>{s.icon}</div>
-                <span className={`badge ${s.badge}`}>{s.trend}</span>
+                {s.trend && <span className={`badge ${s.badge}`}>{s.trend}</span>}
               </div>
               <div className="stat-value">{loading ? "…" : s.value}</div>
               <div className="stat-label">{s.label}</div>
@@ -80,118 +80,57 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Main grid */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:"1.5rem" }}>
-
-          {/* Recent analyses */}
-          <div className="card">
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"1.25rem" }}>
-              <div>
-                <div className="section-title">Recent Analyses</div>
-                <div className="section-sub">Your last {Math.min(recent.length,5)} predictions</div>
-              </div>
-              <Link to="/history" style={{ fontSize:"0.8rem", color:"var(--green-400)", fontWeight:600 }}>
-                View all →
-              </Link>
-            </div>
-
+        {/* Charts Grid */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1.5rem", marginBottom: "1.5rem" }}>
+          
+          {/* Breed Distribution PieChart */}
+          <div className="card anim-fadeup" style={{ animationDelay:"0.2s" }}>
+            <div className="section-title" style={{ marginBottom:"1rem" }}>🐄 {t("breed_dist")}</div>
             {loading ? (
-              <div style={{ textAlign:"center", padding:"3rem", color:"var(--slate-400)" }}>
-                <span className="spinner" />
-                <p style={{ marginTop:"1rem" }}>Loading…</p>
-              </div>
-            ) : recent.length === 0 ? (
-              <div style={{ textAlign:"center", padding:"3rem" }}>
-                <div style={{ fontSize:"3.5rem", marginBottom:"1rem" }}>📭</div>
-                <p style={{ color:"var(--slate-400)", marginBottom:"1.25rem" }}>No analyses yet</p>
-                <Link to="/upload" className="btn btn-primary">Start your first analysis</Link>
-              </div>
+              <div style={{ textAlign:"center", padding:"3rem", color:"var(--slate-400)" }}><span className="spinner" /></div>
+            ) : pieData.length === 0 ? (
+              <p style={{ color:"var(--slate-400)", textAlign:"center", padding:"2rem" }}>{t("no_data")}</p>
             ) : (
-              <div>
-                {recent.map((item, i) => {
-                  const breed = item.primary_breed || item.breed || "Unknown";
-                  const conf  = Math.round((item.confidence || 0) * 100);
-                  const date  = item.created_at
-                    ? new Date(item.created_at).toLocaleDateString("en-IN", { day:"2-digit", month:"short" })
-                    : "—";
-                  return (
-                    <div key={item.id || i} className="history-row">
-                      <div style={{ width:44,height:44,borderRadius:"var(--radius-md)",background:"var(--bg-700)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",flexShrink:0 }}>
-                        {BREED_ICON[breed] || "🐄"}
-                      </div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:600, fontSize:"0.875rem" }}>{breed.replace("_"," ")}</div>
-                        <div style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>{date}</div>
-                      </div>
-                      <div style={{ textAlign:"right" }}>
-                        <span className={`badge ${BREED_BADGE[breed] || "badge-green"}`}>{conf}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div style={{ height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value" label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             )}
           </div>
 
-          {/* Right column */}
-          <div style={{ display:"flex", flexDirection:"column", gap:"1.25rem" }}>
-
-            {/* Breed distribution */}
-            <div className="card">
-              <div className="section-title" style={{ marginBottom:"1.25rem" }}>🐄 Breed Distribution</div>
-              {loading ? (
-                <div style={{ textAlign:"center", padding:"1.5rem" }}>
-                  <span className="spinner" style={{ width:28,height:28 }} />
-                </div>
-              ) : Object.keys(breedCounts).length === 0 ? (
-                <p style={{ color:"var(--slate-400)", fontSize:"0.85rem" }}>No data yet</p>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:"0.85rem" }}>
-                  {Object.entries(breedCounts).sort(([,a],[,b])=>b-a).map(([breed, count]) => {
-                    const pct = Math.round((count / totalAnalyses) * 100);
-                    return (
-                      <div key={breed}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.3rem" }}>
-                          <span style={{ fontSize:"0.82rem", fontWeight:500 }}>{breed.replace("_"," ")}</span>
-                          <span style={{ fontSize:"0.75rem", color:"var(--slate-400)" }}>{count} ({pct}%)</span>
-                        </div>
-                        <div className="progress-wrap">
-                          <div className="progress-bar" style={{ width:`${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Quick actions */}
-            <div className="card">
-              <div className="section-title" style={{ marginBottom:"1rem" }}>⚡ Quick Actions</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:"0.6rem" }}>
-                <Link to="/upload" className="btn btn-primary" style={{ justifyContent:"flex-start" }}>
-                  <Upload size={16} /> New Analysis
-                </Link>
-                <Link to="/history" className="btn btn-ghost" style={{ justifyContent:"flex-start" }}>
-                  <History size={16} /> View History
-                </Link>
+          {/* Scans Over Time LineChart */}
+          <div className="card anim-fadeup" style={{ animationDelay:"0.3s" }}>
+            <div className="section-title" style={{ marginBottom:"1rem" }}>📈 {t("scans_over_time")}</div>
+            {loading ? (
+              <div style={{ textAlign:"center", padding:"3rem", color:"var(--slate-400)" }}><span className="spinner" /></div>
+            ) : lineData.length === 0 ? (
+              <p style={{ color:"var(--slate-400)", textAlign:"center", padding:"2rem" }}>{t("no_data")}</p>
+            ) : (
+              <div style={{ height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={lineData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
+                    <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
+                    <RechartsTooltip 
+                      contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}
+                    />
+                    <Line type="monotone" dataKey="count" stroke="#22c55e" strokeWidth={3} dot={{ r: 4, fill: "#22c55e", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6 }} />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
-            </div>
-
-            {/* Model info */}
-            <div className="card card-green">
-              <div style={{ fontSize:"1.5rem", marginBottom:"0.5rem" }}>🧠</div>
-              <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"0.3rem" }}>MobileNetV2 Model</div>
-              <p style={{ fontSize:"0.78rem", color:"var(--slate-400)", marginBottom:"0.75rem" }}>
-                Transfer learning · 5 Indian & international breeds
-              </p>
-              <div style={{ display:"flex", gap:"0.5rem", flexWrap:"wrap" }}>
-                <span className="badge badge-green">94.2% Accuracy</span>
-                <span className="badge badge-blue">v1.0</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
+        
       </div>
       <VoiceAssistant />
     </div>

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Body
-from app.services.db_service import upsert_user, get_user_role
+from app.services.mongo_service import upsert_user, get_user_role
 
 router = APIRouter()
 

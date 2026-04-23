@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
 import { logout } from "../services/auth";
-import { Menu, X, Sun, Moon } from "lucide-react";
+import { Menu, X, Sun, Moon, LayoutDashboard, Camera, History, Users, HeartPulse, ShoppingCart, Home as HomeIcon } from "lucide-react";
 import LanguageToggle from "./LanguageToggle";
 
 export default function Navbar() {
@@ -17,10 +17,11 @@ export default function Navbar() {
   const [dropOpen, setDropOpen] = useState(false);
 
   const links = [
-    { to: "/",          label: t("home")      },
-    { to: "/dashboard", label: t("dashboard") },
-    { to: "/upload",    label: t("upload")   },
-    { to: "/history",   label: t("history")   },
+    { to: "/",          label: t("home"),        icon: <HomeIcon size={18} /> },
+    { to: "/dashboard", label: t("dashboard"),   icon: <LayoutDashboard size={18} /> },
+    { to: "/my-herd",   label: t("my_herd"),    icon: <Users size={18} /> },
+    { to: "/clinic",    label: t("clinic"),     icon: <HeartPulse size={18} /> },
+    { to: "/marketplace", label: t("marketplace"), icon: <ShoppingCart size={18} /> },
   ];
 
   const handleLogout = async () => {
@@ -51,8 +52,10 @@ export default function Navbar() {
                 key={l.to}
                 to={l.to}
                 className={`nav-link${location.pathname === l.to ? " active" : ""}`}
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
               >
-                {l.label}
+                {l.icon}
+                <span>{l.label}</span>
               </Link>
             ))}
           </div>

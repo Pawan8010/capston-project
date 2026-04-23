@@ -13,92 +13,86 @@ import os
 import numpy as np
 from PIL import Image
 from io import BytesIO
-import tensorflow as tf
 
-# ── Model configuration (extracted from capston.py) ────────────────────────
-# Path is relative to the project root (where uvicorn is started from)
-MODEL_PATH = os.path.join(
-    os.path.dirname(__file__),           # backend/app/services/
-    "..", "..", "..",                    # → project root
-    "ml-service", "models", "breed_model.h5"
-)
-MODEL_PATH = os.path.normpath(MODEL_PATH)
+import json
+import logging
+import random
+from fastapi import Request
 
-# Breed classes MUST be in alphabetical order to match ImageDataGenerator indexing
-CLASS_NAMES = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
-IMG_SIZE    = (224, 224)
+logger = logging.getLogger(__name__)
 
-# ── Singleton model ─────────────────────────────────────────────────────────
-_model: tf.keras.Model = None
+try:
+    import tensorflow as tf
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
+    logger.warning("TensorFlow not installed. Running in MOCK prediction mode.")
 
+class BreedPredictor:
+    def __init__(self, model_path: str, class_index_path: str):
+        self.model_path = model_path
+        self.class_index_path = class_index_path
+        self.IMG_SIZE = (224, 224)
+        
+        self.labels = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
+        if os.path.exists(self.class_index_path):
+            with open(self.class_index_path, "r") as f:
+                self.labels = json.load(f)
 
-def load_model() -> tf.keras.Model:
-    """Load the trained .h5 model once; cache in module-level variable."""
-    global _model
-    if _model is None:
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(
-                f"breed_model.h5 not found at:\n  {MODEL_PATH}\n"
-                "Copy the file to ml-service/models/breed_model.h5"
-            )
-        _model = tf.keras.models.load_model(MODEL_PATH)
-    return _model
+        if TF_AVAILABLE:
+            try:
+                if not os.path.exists(self.model_path):
+                    logger.error(f"Model file missing: {self.model_path}")
+                    raise RuntimeError(f"breed_model.h5 not found at {self.model_path}")
+                
+                self.model = tf.keras.models.load_model(self.model_path)
+                logger.info("BreedPredictor initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to load BreedPredictor: {e}")
+                raise RuntimeError(f"Could not load ML model: {e}")
+        else:
+            self.model = None
 
+    def preprocess(self, pil_image: Image.Image) -> np.ndarray:
+        img = pil_image.convert("RGB").resize(self.IMG_SIZE)
+        arr = np.array(img, dtype=np.float32) / 255.0
+        return np.expand_dims(arr, axis=0)
 
-def _preprocess(pil_image: Image.Image) -> np.ndarray:
-    """Preprocess PIL image identical to the Colab notebook preprocessing."""
-    img = pil_image.convert("RGB").resize(IMG_SIZE)
-    arr = np.array(img, dtype=np.float32) / 255.0
-    return np.expand_dims(arr, axis=0)   # (1, 224, 224, 3)
+    def predict(self, image_bytes: bytes) -> dict:
+        """
+        Runs breed classification on image bytes.
+        """
+        from io import BytesIO
+        from PIL import Image
+        import numpy as np
 
+        pil_image = Image.open(BytesIO(image_bytes))
+        
+        if TF_AVAILABLE and self.model:
+            tensor = self.preprocess(pil_image)
+            probs = self.model.predict(tensor, verbose=0)[0]
+        else:
+            # Mock mode
+            import random
+            probs = np.random.dirichlet(np.ones(len(self.labels)), size=1)[0]
+        
+        top2_idx = np.argsort(probs)[::-1][:2]
+        primary_conf   = float(probs[top2_idx[0]])
+        secondary_conf = float(probs[top2_idx[1]])
+        total = primary_conf + secondary_conf
+        
+        crossbreed_ratio = round(secondary_conf / total, 3) if total > 0 else 0.0
+        
+        return {
+            "primary_breed":    self.labels[top2_idx[0]],
+            "secondary_breed":  self.labels[top2_idx[1]],
+            "confidence":       round(primary_conf * 100, 2),
+            "crossbreed_ratio": crossbreed_ratio,
+            "all_probabilities": {
+                self.labels[i]: round(float(probs[i]) * 100, 2)
+                for i in range(len(probs))
+            }
+        }
 
-async def predict_breed(file) -> dict:
-    """
-    Main prediction entry point called by the /predict route.
-
-    Parameters
-    ----------
-    file : UploadFile  — FastAPI UploadFile object
-
-    Returns
-    -------
-    {
-        "primary_breed":    str,
-        "secondary_breed":  str,
-        "confidence":       float,   # 0-1 probability of primary breed
-        "crossbreed_ratio": list,    # probability for each class
-        "all_predictions":  dict,    # {breed_name: probability}
-        "class_names":      list,    # ordered list of class names
-        "filename":         str,
-    }
-    """
-    model = load_model()
-
-    # Read uploaded file bytes → PIL Image
-    contents = await file.read()
-    pil_image = Image.open(BytesIO(contents))
-
-    arr = _preprocess(pil_image)
-    preds = model.predict(arr, verbose=0)[0]   # shape: (num_classes,)
-
-    # Top-2 predictions (descending)
-    top_indices = preds.argsort()[-2:][::-1]
-
-    primary_breed   = CLASS_NAMES[top_indices[0]]
-    secondary_breed = CLASS_NAMES[top_indices[1]]
-    confidence      = float(preds[top_indices[0]])
-
-    crossbreed_ratio = preds.tolist()
-    all_predictions  = {
-        CLASS_NAMES[i]: float(preds[i]) for i in range(len(CLASS_NAMES))
-    }
-
-    return {
-        "primary_breed":    primary_breed,
-        "secondary_breed":  secondary_breed,
-        "confidence":       round(confidence, 4),
-        "crossbreed_ratio": [round(p, 4) for p in crossbreed_ratio],
-        "all_predictions":  {k: round(v, 4) for k, v in all_predictions.items()},
-        "class_names":      CLASS_NAMES,
-        "filename":         file.filename,
-    }
+def get_predictor(request: Request) -> BreedPredictor:
+    return request.app.state.predictor

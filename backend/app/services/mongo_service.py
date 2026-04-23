@@ -2,23 +2,45 @@ from app.config import db
 from datetime import datetime, timedelta
 from bson import ObjectId
 
-async def save_prediction(uid: str, result: dict):
-    doc = {"uid": uid, "result": result, "created_at": datetime.utcnow()}
-    await db.predictions.insert_one(doc)
+async def save_prediction(doc: dict) -> str:
+    """
+    Saves a prediction document to the predictions collection.
+    Adds timestamp and feedback_given=False automatically.
+    Returns the inserted document ID as a string.
+    """
+    doc["timestamp"]     = datetime.utcnow()
+    doc["feedback_given"] = False
+    result = await db.predictions.insert_one(doc)
+    return str(result.inserted_id)
 
-async def get_history(uid: str):
-    cursor = db.predictions.find({"uid": uid}).sort("created_at", -1)
-    records = []
-    async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        doc["id"] = doc["_id"]   # frontend uses item.id
-        # Flatten result fields to top level for convenience
-        if "result" in doc:
-            for k, v in doc["result"].items():
-                if k not in doc:
-                    doc[k] = v
-        records.append(doc)
-    return records
+async def get_user_predictions(
+    user_id: str,
+    breed_filter: str = None,
+    from_date: str  = None,
+    limit: int      = 20
+) -> list:
+    """
+    Returns paginated prediction history for a specific user.
+    Supports optional filtering by breed name and start date.
+    Results are sorted newest first.
+    """
+    query = {"user_id": user_id}
+    if breed_filter:
+        query["primary_breed"] = breed_filter
+    if from_date:
+        query["timestamp"] = {
+            "$gte": datetime.fromisoformat(from_date)
+        }
+    cursor = db.predictions.find(
+        query,
+        {"_id": 1, "primary_breed": 1, "secondary_breed": 1,
+         "confidence": 1, "image_url": 1, "timestamp": 1,
+         "crossbreed_ratio": 1, "health_status": 1}
+    ).sort("timestamp", -1).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    for d in docs:
+        d["_id"] = str(d["_id"])
+    return docs
 
 async def upsert_user(data: dict):
     # Set default role to farmer unless they are a predefined admin

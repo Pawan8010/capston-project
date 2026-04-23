@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.services.db_service import (
+from app.services.mongo_service import (
     get_admin_stats, get_user_role, get_breed_distribution,
     get_daily_counts, get_all_users
 )

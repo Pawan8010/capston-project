@@ -2,7 +2,9 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import VoiceAssistant from "../components/VoiceAssistant";
+import FeedbackWidget from "../components/FeedbackWidget";
 import { Download, Camera, History, Info, Zap } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 const BREED_INFO = {
   Gir:        { emoji:"🐄", origin:"Gujarat, India",         milk:"6–8 L/day",   fat:"4.5–5%", trait:"Hardy & heat-tolerant",        badge:"badge-green",  diet:"Tropical grasses, legumes, mineral supplements", care:"Vaccinate annually; shade access essential", prod:"Suitable for A2 milk production" },
@@ -12,7 +14,7 @@ const BREED_INFO = {
   Sahiwal:    { emoji:"🐄", origin:"Punjab, India/Pakistan", milk:"10–16 L/day", fat:"4.8%",   trait:"Best dual-purpose desi breed",  badge:"badge-purple", diet:"Balanced diet with green fodder and grains",      care:"Suitable for intensive or semi-intensive",  prod:"Popular crossbreeding parent breed" },
 };
 
-function ConfidenceRing({ value, size = 140 }) {
+function ConfidenceRing({ value, size = 140, t }) {
   const r    = (size - 16) / 2;
   const circ = 2 * Math.PI * r;
   const dash = circ * value;
@@ -35,7 +37,7 @@ function ConfidenceRing({ value, size = 140 }) {
       </svg>
       <div className="ring-text">
         <div className="ring-pct">{Math.round(value * 100)}%</div>
-        <div className="ring-label">confidence</div>
+        <div className="ring-label">{t("confidence") || "confidence"}</div>
       </div>
     </div>
   );
@@ -73,6 +75,7 @@ function BreedBar({ breed, prob, isPrimary }) {
 export default function Result() {
   const location = useLocation();
   const navigate  = useNavigate();
+  const { t } = useLanguage();
   const { result, previewUrl } = location.state || {};
 
   useEffect(() => { if (!result) navigate("/upload"); }, [result, navigate]);
@@ -104,24 +107,24 @@ export default function Result() {
         {/* Header */}
         <div className="page-header">
           <div className="breadcrumb">
-            <Link to="/dashboard" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>Dashboard</Link>
+            <Link to="/dashboard" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>{t("dashboard")}</Link>
             <span style={{ color:"var(--slate-700)", margin:"0 0.3rem" }}>/</span>
-            <Link to="/upload" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>Analyse</Link>
+            <Link to="/upload" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>{t("upload")}</Link>
             <span style={{ color:"var(--slate-700)", margin:"0 0.3rem" }}>/</span>
-            <span style={{ color:"var(--green-400)", fontSize:"0.82rem", fontWeight:600 }}>Results</span>
+            <span style={{ color:"var(--green-400)", fontSize:"0.82rem", fontWeight:600 }}>{t("result")}</span>
           </div>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:"1rem" }}>
             <div>
               <h2 style={{ fontSize:"1.6rem", marginBottom:"0.3rem" }}>
-                ✅ Breed <span className="gradient-text">Analysis Results</span>
+                ✅ {t("result")}
               </h2>
             </div>
             <div style={{ display:"flex", gap:"0.75rem" }}>
               <button className="btn btn-ghost btn-sm" onClick={handleDownload}>
-                <Download size={15} /> Export JSON
+                <Download size={15} /> {t("export_json")}
               </button>
               <Link to="/upload" className="btn btn-primary btn-sm">
-                <Camera size={15} /> New Analysis
+                <Camera size={15} /> {t("new_analysis")}
               </Link>
             </div>
           </div>
@@ -134,14 +137,14 @@ export default function Result() {
             <div className="card" style={{ padding:"1rem", textAlign:"center" }}>
               <img src={previewUrl} alt="Uploaded livestock"
                 style={{ width:"100%", maxHeight:220, borderRadius:"var(--radius-md)", objectFit:"cover", marginBottom:"0.5rem" }} />
-              <p style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>📷 Uploaded Image</p>
+              <p style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>📷 {t("uploaded_image")}</p>
             </div>
           )}
 
           {/* Primary breed */}
           <div className="card card-green" style={{ textAlign:"center", padding:"1.5rem 1rem" }}>
             <div style={{ fontSize:"2.75rem", marginBottom:"0.5rem" }}>{info.emoji || "🐄"}</div>
-            <span className="badge badge-green" style={{ marginBottom:"0.75rem" }}>Primary Breed</span>
+            <span className="badge badge-green" style={{ marginBottom:"0.75rem" }}>{t("primary_breed")}</span>
             <h3 style={{ fontSize:"1.2rem", marginBottom:"0.5rem" }}>{primary_breed.replace("_"," ")}</h3>
             {info.origin && <p style={{ fontSize:"0.78rem", color:"var(--slate-400)", marginBottom:"0.25rem" }}>📍 {info.origin}</p>}
             {info.milk   && <p style={{ fontSize:"0.78rem", color:"var(--slate-400)", marginBottom:"0.75rem" }}>🥛 {info.milk}</p>}
@@ -150,14 +153,14 @@ export default function Result() {
 
           {/* Confidence ring */}
           <div className="card" style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"0.75rem", padding:"1.5rem 1rem" }}>
-            <ConfidenceRing value={confidence} size={140} />
+            <ConfidenceRing value={confidence} size={140} t={t} />
             <div style={{ textAlign:"center" }}>
               <p style={{ fontWeight:700, fontSize:"0.875rem", marginBottom:"0.2rem" }}>
                 {primary_breed.replace("_"," ")}
               </p>
               {secondary_breed && (
                 <p style={{ fontSize:"0.75rem", color:"var(--slate-400)" }}>
-                  Secondary: {secondary_breed.replace("_"," ")}
+                  {t("secondary")}: {secondary_breed.replace("_"," ")}
                 </p>
               )}
             </div>
@@ -166,7 +169,7 @@ export default function Result() {
           {/* Secondary breed */}
           <div className="card card-amber" style={{ textAlign:"center", padding:"1.5rem 1rem" }}>
             <div style={{ fontSize:"2.75rem", marginBottom:"0.5rem" }}>{secInfo.emoji || "🐂"}</div>
-            <span className="badge badge-amber" style={{ marginBottom:"0.75rem" }}>Secondary Breed</span>
+            <span className="badge badge-amber" style={{ marginBottom:"0.75rem" }}>{t("secondary")}</span>
             <h3 style={{ fontSize:"1.2rem", marginBottom:"0.5rem" }}>{secondary_breed?.replace("_"," ") || "—"}</h3>
             {secInfo.origin && <p style={{ fontSize:"0.78rem", color:"var(--slate-400)", marginBottom:"0.25rem" }}>📍 {secInfo.origin}</p>}
             {secInfo.milk   && <p style={{ fontSize:"0.78rem", color:"var(--slate-400)", marginBottom:"0.75rem" }}>🥛 {secInfo.milk}</p>}
@@ -179,12 +182,12 @@ export default function Result() {
 
           {/* Crossbreed composition */}
           <div className="card">
-            <div style={{ fontWeight:700, fontSize:"1rem", marginBottom:"1.25rem" }}>🧬 Crossbreed Composition</div>
+            <div style={{ fontWeight:700, fontSize:"1rem", marginBottom:"1.25rem" }}>🧬 {t("crossbreed_comp")}</div>
             {compositions.length > 0
               ? compositions.map(([breed, prob]) => (
                   <BreedBar key={breed} breed={breed} prob={prob} isPrimary={breed === primary_breed} />
                 ))
-              : <p style={{ color:"var(--slate-400)", fontSize:"0.875rem" }}>No breakdown data.</p>
+              : <p style={{ color:"var(--slate-400)", fontSize:"0.875rem" }}>{t("no_breakdown")}</p>
             }
           </div>
 
@@ -193,14 +196,14 @@ export default function Result() {
             {info.origin && (
               <div className="card">
                 <div style={{ fontWeight:700, fontSize:"0.95rem", marginBottom:"1rem" }}>
-                  📋 About {primary_breed.replace("_"," ")}
+                  📋 {t("about_breed")} {primary_breed.replace("_"," ")}
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.65rem" }}>
                   {[
-                    { icon:"📍", label:"Origin",      value: info.origin  },
-                    { icon:"🥛", label:"Milk Yield",  value: info.milk    },
-                    { icon:"🧈", label:"Fat Content", value: info.fat || "—" },
-                    { icon:"⭐", label:"Key Trait",   value: info.trait   },
+                    { icon:"📍", label:t("origin"),      value: info.origin  },
+                    { icon:"🥛", label:t("milk_yield"),  value: info.milk    },
+                    { icon:"🧈", label:t("fat_content"), value: info.fat || "—" },
+                    { icon:"⭐", label:t("key_trait"),   value: info.trait   },
                   ].map(f => (
                     <div key={f.label} style={{ background:"var(--bg-700)", borderRadius:"var(--radius-md)", padding:"0.75rem", textAlign:"center" }}>
                       <div style={{ fontSize:"1.25rem", marginBottom:"0.25rem" }}>{f.icon}</div>
@@ -217,12 +220,12 @@ export default function Result() {
               <div className="card">
                 <div style={{ fontWeight:700, fontSize:"0.95rem", marginBottom:"0.85rem" }}>
                   <Zap size={15} style={{ display:"inline",verticalAlign:"middle",marginRight:"0.35rem",color:"var(--amber-400)" }} />
-                  Recommendations
+                  {t("recommendations")}
                 </div>
                 {[
-                  { label:"🌿 Diet",        value: info.diet },
-                  { label:"🏥 Care",        value: info.care },
-                  { label:"📈 Productivity",value: info.prod },
+                  { label:`🌿 ${t("diet")}`,        value: info.diet },
+                  { label:`🏥 ${t("care")}`,        value: info.care },
+                  { label:`📈 ${t("productivity")}`,value: info.prod },
                 ].map(r => r.value && (
                   <div key={r.label} style={{ marginBottom:"0.75rem" }}>
                     <div style={{ fontSize:"0.75rem", fontWeight:700, color:"var(--slate-400)", marginBottom:"0.2rem" }}>{r.label}</div>
@@ -235,7 +238,7 @@ export default function Result() {
             {/* AI explanation */}
             <div className="card card-blue">
               <div style={{ fontSize:"1.25rem", marginBottom:"0.5rem" }}>🤖</div>
-              <div style={{ fontWeight:700, fontSize:"0.875rem", marginBottom:"0.4rem" }}>AI Analysis Summary</div>
+              <div style={{ fontWeight:700, fontSize:"0.875rem", marginBottom:"0.4rem" }}>{t("ai_analysis_summary")}</div>
               <p style={{ fontSize:"0.78rem", color:"var(--slate-300)", lineHeight:1.7 }}>
                 The model identified this animal as predominantly{" "}
                 <strong style={{ color:"var(--white)" }}>{primary_breed.replace("_"," ")}</strong> with{" "}
@@ -247,11 +250,18 @@ export default function Result() {
           </div>
         </div>
 
+        {/* Feedback Widget */}
+        {result.id && (
+          <div style={{ marginBottom: "1.25rem" }}>
+            <FeedbackWidget predictionId={result.id} />
+          </div>
+        )}
+
         {/* Action buttons */}
         <div style={{ display:"flex", gap:"0.75rem", flexWrap:"wrap" }}>
-          <Link to="/upload" className="btn btn-primary"><Camera size={16} /> Analyse Another</Link>
-          <Link to="/history" className="btn btn-outline"><History size={16} /> View History</Link>
-          <button className="btn btn-ghost" onClick={handleDownload}><Download size={16} /> Download JSON</button>
+          <Link to="/upload" className="btn btn-primary"><Camera size={16} /> {t("upload")}</Link>
+          <Link to="/history" className="btn btn-outline"><History size={16} /> {t("history")}</Link>
+          <button className="btn btn-ghost" onClick={handleDownload}><Download size={16} /> {t("export_json")}</button>
         </div>
       </div>
       <VoiceAssistant breedContext={result} />

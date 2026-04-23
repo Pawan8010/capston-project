@@ -12,6 +12,7 @@ import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import { getAdminStats, getAdminUsers } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 import { Users, BarChart2, TrendingUp, Cpu, RefreshCw, Shield } from "lucide-react";
 
 const BREED_COLORS = {
@@ -62,6 +63,7 @@ export default function AdminDashboard() {
   const [users,   setUsers]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [uLoading,setULoading]= useState(true);
+  const { t } = useLanguage();
 
   const fetchAll = async () => {
     setLoading(true); setULoading(true);
@@ -86,10 +88,10 @@ export default function AdminDashboard() {
   const totalUsers = stats?.total_users || 0;
 
   const STAT_CARDS = [
-    { label: "Total Users",       value: totalUsers,            icon: <Users size={20} />,      badge: "badge-blue",   color: "card-blue"   },
-    { label: "Total Predictions", value: totalPreds,            icon: <BarChart2 size={20} />,  badge: "badge-green",  color: "card-green"  },
-    { label: "Breed Classes",     value: 5,                     icon: <Cpu size={20} />,        badge: "badge-amber",  color: "card-amber"  },
-    { label: "Model Accuracy",    value: "94.2%",               icon: <TrendingUp size={20} />, badge: "badge-purple", color: "card-purple" },
+    { label: t("total_users"),       value: totalUsers,            icon: <Users size={20} />,      badge: "badge-blue",   color: "card-blue"   },
+    { label: t("total_predictions"), value: totalPreds,            icon: <BarChart2 size={20} />,  badge: "badge-green",  color: "card-green"  },
+    { label: t("breed_classes"),     value: 5,                     icon: <Cpu size={20} />,        badge: "badge-amber",  color: "card-amber"  },
+    { label: t("model_accuracy"),    value: "94.2%",               icon: <TrendingUp size={20} />, badge: "badge-purple", color: "card-purple" },
   ];
 
   return (
@@ -103,18 +105,18 @@ export default function AdminDashboard() {
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
               <Shield size={16} style={{ color: "var(--purple-400)" }} />
               <span style={{ fontSize: "0.75rem", color: "var(--purple-400)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Admin Panel
+                {t("admin_panel")}
               </span>
             </div>
             <h2 style={{ fontSize: "1.6rem", marginBottom: "0.3rem" }}>
-              🛡️ Admin <span className="gradient-text">Dashboard</span>
+              🛡️ {t("admin")} <span className="gradient-text">{t("dashboard")}</span>
             </h2>
             <p style={{ fontSize: "0.875rem", color: "var(--slate-400)" }}>
-              System analytics and user management
+              {t("admin_subtitle")}
             </p>
           </div>
           <button className="btn btn-ghost" onClick={fetchAll} disabled={loading}>
-            <RefreshCw size={15} className={loading ? "spin" : ""} /> Refresh
+            <RefreshCw size={15} className={loading ? "spin" : ""} /> {t("refresh")}
           </button>
         </div>
 
@@ -138,7 +140,7 @@ export default function AdminDashboard() {
           {/* Breed distribution */}
           <div className="card">
             <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "1.25rem" }}>
-              🐄 Breed Distribution
+              🐄 {t("breed_dist")}
             </div>
             {loading ? (
               <div style={{ textAlign: "center", padding: "2rem" }}><span className="spinner" /></div>
@@ -175,7 +177,7 @@ export default function AdminDashboard() {
           {/* 7-day activity */}
           <div className="card">
             <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "1.25rem" }}>
-              📈 7-Day Activity
+              📈 {t("7_day_activity")}
             </div>
             <MiniLineChart data={dailyCounts} />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.75rem" }}>
@@ -191,7 +193,7 @@ export default function AdminDashboard() {
         {/* User management table */}
         <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: "1.5rem" }}>
           <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", fontWeight: 700, fontSize: "0.95rem" }}>
-            👥 User Management
+            👥 {t("user_management")}
           </div>
           {uLoading ? (
             <div style={{ textAlign: "center", padding: "3rem" }}>
@@ -205,9 +207,9 @@ export default function AdminDashboard() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Email</th>
-                    <th>Display Name</th>
-                    <th>Role</th>
+                    <th>{t("email_address")}</th>
+                    <th>{t("display_name")}</th>
+                    <th>{t("role")}</th>
                   </tr>
                 </thead>
                 <tbody>

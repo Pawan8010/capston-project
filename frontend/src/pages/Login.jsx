@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { loginWithEmailAndPassword, signInWithGoogle } from "../services/auth";
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import LanguageToggle from "../components/LanguageToggle";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,6 +12,7 @@ export default function Login() {
   const [loading, setLoading]     = useState(false);
   const [gloading, setGloading]   = useState(false);
   const [showPass, setShowPass]   = useState(false);
+  const { t } = useLanguage();
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -40,6 +43,10 @@ export default function Login() {
       <div className="orb orb-green" style={{ width:500,height:500,top:-150,left:"50%",transform:"translateX(-60%)",opacity:0.3 }} />
       <div className="orb orb-blue"  style={{ width:300,height:300,bottom:0,right:0,opacity:0.2 }} />
 
+      <div style={{ position: "absolute", top: "1rem", right: "1rem", zIndex: 10 }}>
+        <LanguageToggle />
+      </div>
+
       <div className="auth-card anim-fadeup" style={{ position:"relative", zIndex:1 }}>
         {/* Brand */}
         <div style={{ textAlign:"center", marginBottom:"2rem" }}>
@@ -47,10 +54,10 @@ export default function Login() {
             🐄
           </div>
           <h1 style={{ fontSize:"1.6rem", marginBottom:"0.3rem" }}>
-            Welcome back to <span className="gradient-text">LivestockAI</span>
+            {t("welcome_back")} <span className="gradient-text">LivestockAI</span>
           </h1>
           <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-            Sign in to your account to continue
+            {t("sign_in_desc")}
           </p>
         </div>
 
@@ -62,23 +69,23 @@ export default function Login() {
           style={{ marginBottom:"1.25rem", padding:"0.75rem", border:"1.5px solid var(--border)" }}
         >
           {gloading ? (
-            <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> Signing in…</>
+            <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> {t("signing_in")}</>
           ) : (
-            <><span style={{ fontSize:"1.1rem" }}>🔐</span> Continue with Google</>
+            <><span style={{ fontSize:"1.1rem" }}>🔐</span> {t("continue_google")}</>
           )}
         </button>
 
         {/* Divider */}
         <div style={{ display:"flex", alignItems:"center", gap:"0.75rem", marginBottom:"1.25rem" }}>
           <div style={{ flex:1,height:1,background:"var(--border)" }} />
-          <span style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>or sign in with email</span>
+          <span style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>{t("or_sign_email")}</span>
           <div style={{ flex:1,height:1,background:"var(--border)" }} />
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:"1rem" }}>
           <div className="form-group">
-            <label className="form-label">Email address</label>
+            <label className="form-label">{t("email_address")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><Mail size={16} /></span>
               <input
@@ -90,7 +97,7 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password</label>
+            <label className="form-label">{t("password")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><Lock size={16} /></span>
               <input
@@ -118,15 +125,15 @@ export default function Login() {
             style={{ padding:"0.85rem", marginTop:"0.25rem" }}
           >
             {loading
-              ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> Signing in…</>
-              : <>Sign In <ArrowRight size={16} /></>
+              ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> {t("signing_in")}</>
+              : <>{t("login")} <ArrowRight size={16} /></>
             }
           </button>
         </form>
 
         <div style={{ textAlign:"center", marginTop:"1.5rem", fontSize:"0.875rem", color:"var(--slate-400)" }}>
-          Don't have an account?{" "}
-          <Link to="/signup" style={{ color:"var(--green-400)", fontWeight:600 }}>Create one →</Link>
+          {t("no_account")}{" "}
+          <Link to="/signup" style={{ color:"var(--green-400)", fontWeight:600 }}>{t("create_one")} →</Link>
         </div>
       </div>
     </div>

@@ -3,16 +3,20 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { logout } from "../services/auth";
 import LanguageToggle from "./LanguageToggle";
+import { useLanguage } from "../context/LanguageContext";
 import {
-  LayoutDashboard, Upload, History, LogOut, ChevronRight, Cpu, Shield
+  LayoutDashboard, Upload, History, LogOut, ChevronRight, Cpu, Shield, Map, Users, HeartPulse, ShoppingCart
 } from "lucide-react";
 
-
 const NAV = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/camera",    icon: Cpu,             label: "Live Scanner" },
-  { to: "/upload",    icon: Upload,          label: "Analyse"   },
-  { to: "/history",   icon: History,         label: "History"   },
+  { to: "/dashboard", icon: LayoutDashboard, label: "dashboard" },
+  { to: "/my-herd",    icon: Users,           label: "my_herd"    },
+  { to: "/clinic",     icon: HeartPulse,      label: "clinic"     },
+  { to: "/marketplace", icon: ShoppingCart,    label: "marketplace"},
+  { to: "/camera",     icon: Cpu,             label: "live_scanner" },
+  { to: "/upload",    icon: Upload,          label: "upload"   },
+  { to: "/history",   icon: History,         label: "history"   },
+  { to: "/map",       icon: Map,             label: "breed_map" },
 ];
 
 
@@ -21,6 +25,7 @@ export default function Sidebar() {
   const navigate  = useNavigate();
   const { currentUser } = useAuth();
   const [open, setOpen] = useState(false);
+  const { t } = useLanguage();
 
   const handleLogout = async () => {
     await logout();
@@ -87,7 +92,7 @@ export default function Sidebar() {
                 <span className="sidebar-link-icon">
                   <Icon size={18} />
                 </span>
-                {label}
+                {t(label)}
                 {active && (
                   <span style={{ marginLeft: "auto" }}>
                     <ChevronRight size={14} />
@@ -106,7 +111,7 @@ export default function Sidebar() {
               <span className="sidebar-link-icon">
                 <Shield size={18} />
               </span>
-              Admin Panel
+              {t("admin_panel")}
             </Link>
           )}
 
@@ -148,7 +153,7 @@ export default function Sidebar() {
           )}
           <button onClick={handleLogout} className="sidebar-logout">
             <LogOut size={16} />
-            Sign Out
+            {t("logout")}
           </button>
         </div>
       </aside>

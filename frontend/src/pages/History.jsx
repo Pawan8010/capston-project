@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import { getPredictionHistory, deletePrediction } from "../services/api";
 import { Search, Filter, Upload, Trash2, Eye } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 const BREED_BADGE = { Gir:"badge-green", Holstein:"badge-blue", Jersey:"badge-amber", Red_Sindhi:"badge-red", Sahiwal:"badge-purple" };
 const BREED_ICON  = { Gir:"🐄", Holstein:"🐄", Jersey:"🐄", Red_Sindhi:"🐂", Sahiwal:"🐄" };
@@ -22,19 +23,32 @@ function ConfBar({ value }) {
 
 export default function History() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [history,  setHistory]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [deleting, setDeleting] = useState(null);
-  const [search,   setSearch]   = useState("");
-  const [filter,   setFilter]   = useState("all");
+  const [search,   setSearch]   = useState(""); // Used as breed input instead of select
+  const [fromDate, setFromDate] = useState("");
   const [toast,    setToast]    = useState("");
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
-    getPredictionHistory()
-      .then(setHistory)
-      .catch(() => setHistory([]))
+    setLoading(true);
+    const params = {};
+    if (search) params.breed = search;
+    if (fromDate) params.from_date = fromDate;
+    
+    getPredictionHistory(params)
+      .then(data => {
+        setHistory(data.predictions || []);
+        setTotalCount(data.count || 0);
+      })
+      .catch(() => {
+        setHistory([]);
+        setTotalCount(0);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [search, fromDate]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
 
@@ -43,29 +57,25 @@ export default function History() {
     setDeleting(id);
     try {
       await deletePrediction(id);
-      setHistory(h => h.filter(x => x.id !== id));
+      setHistory(h => h.filter(x => x.id !== id && x._id !== id));
+      setTotalCount(c => c - 1);
       showToast("✅ Prediction deleted");
     } catch { showToast("❌ Failed to delete"); }
     finally { setDeleting(null); }
   };
 
-  const BREEDS = [...new Set(history.map(h => h.primary_breed || h.breed).filter(Boolean))];
-
-  const filtered = history.filter(h => {
-    const breed = (h.primary_breed || h.breed || "").toLowerCase();
-    return (!search || breed.includes(search.toLowerCase()))
-        && (filter === "all" || (h.primary_breed || h.breed) === filter);
-  });
+  const BREEDS = ["Gir", "Holstein", "Jersey", "Red Sindhi", "Sahiwal"];
+  const filtered = history;
 
   const avgConf = history.length
     ? Math.round(history.reduce((s,h) => s + (h.confidence||0), 0) / history.length * 100)
     : 0;
 
   const STATS = [
-    { label:"Total Analyses", value: history.length,  color:"card-green",  badge:"badge-green"  },
-    { label:"Avg Confidence", value: `${avgConf}%`,   color:"card-blue",   badge:"badge-blue"   },
-    { label:"Breeds Found",   value: BREEDS.length,   color:"card-amber",  badge:"badge-amber"  },
-    { label:"Showing",        value: filtered.length, color:"card-purple", badge:"badge-purple" },
+    { label:t("total_analyses"), value: totalCount,  color:"card-green",  badge:"badge-green"  },
+    { label:t("avg_confidence"), value: `${avgConf}%`,   color:"card-blue",   badge:"badge-blue"   },
+    { label:t("breeds_found"),   value: BREEDS.length,   color:"card-amber",  badge:"badge-amber"  },
+    { label:t("showing"),        value: filtered.length, color:"card-purple", badge:"badge-purple" },
   ];
 
   return (
@@ -77,14 +87,14 @@ export default function History() {
         <div className="page-header" style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:"1rem" }}>
           <div>
             <h2 style={{ fontSize:"1.6rem", marginBottom:"0.3rem" }}>
-              📂 Analysis <span className="gradient-text">History</span>
+              📂 <span className="gradient-text">{t("analysis_history")}</span>
             </h2>
             <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-              {history.length} total analyses across all sessions
+              {history.length} {t("total_analyses_all")}
             </p>
           </div>
           <Link to="/upload" className="btn btn-primary">
-            <Upload size={16} /> New Analysis
+            <Upload size={16} /> {t("new_analysis")}
           </Link>
         </div>
 
@@ -102,22 +112,18 @@ export default function History() {
         <div style={{ display:"flex", gap:"0.75rem", marginBottom:"1.25rem", flexWrap:"wrap", alignItems:"center" }}>
           <div className="input-icon-wrap" style={{ flex:1, minWidth:200 }}>
             <span className="input-icon"><Search size={15} /></span>
-            <input className="input" type="text" placeholder="Search by breed name…"
+            <input className="input" type="text" placeholder={t("search_breed")}
               value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <div style={{ position:"relative", display:"flex", alignItems:"center" }}>
             <Filter size={14} style={{ position:"absolute",left:"0.85rem",color:"var(--slate-500)",pointerEvents:"none" }} />
-            <select
+            <input
+              type="date"
               className="input"
               style={{ paddingLeft:"2.25rem", width:"auto", minWidth:150 }}
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-            >
-              <option value="all">All Breeds</option>
-              {BREEDS.map(b => (
-                <option key={b} value={b}>{b.replace("_"," ")}</option>
-              ))}
-            </select>
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+            />
           </div>
         </div>
 
@@ -126,7 +132,7 @@ export default function History() {
           {loading ? (
             <div style={{ textAlign:"center", padding:"4rem", color:"var(--slate-400)" }}>
               <span className="spinner" />
-              <p style={{ marginTop:"1rem" }}>Loading history…</p>
+              <p style={{ marginTop:"1rem" }}>{t("loading_history")}</p>
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign:"center", padding:"5rem 2rem" }}>
@@ -134,13 +140,13 @@ export default function History() {
                 {history.length ? "🔍" : "📭"}
               </div>
               <h3 style={{ marginBottom:"0.5rem" }}>
-                {history.length ? "No results match your search" : "No analyses yet"}
+                {history.length ? t("no_results") : t("no_analyses")}
               </h3>
               <p style={{ color:"var(--slate-400)", fontSize:"0.875rem", marginBottom:"1.5rem" }}>
-                {history.length ? "Try adjusting your filters" : "Upload a livestock image to get started"}
+                {history.length ? t("adjust_filters") : t("upload_started")}
               </p>
               {!history.length && (
-                <Link to="/upload" className="btn btn-primary">Start First Analysis</Link>
+                <Link to="/upload" className="btn btn-primary">{t("start_first_analysis")}</Link>
               )}
             </div>
           ) : (
@@ -149,11 +155,11 @@ export default function History() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Breed</th>
-                    <th>Secondary</th>
-                    <th>Confidence</th>
-                    <th>Date</th>
-                    <th>Actions</th>
+                    <th>{t("breed")}</th>
+                    <th>{t("secondary")}</th>
+                    <th>{t("confidence")}</th>
+                    <th>{t("date")}</th>
+                    <th>{t("actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -174,7 +180,7 @@ export default function History() {
                             <span style={{ fontSize:"1.2rem" }}>{BREED_ICON[breed] || "🐄"}</span>
                             <div>
                               <div style={{ fontWeight:600, fontSize:"0.875rem" }}>{breed.replace("_"," ")}</div>
-                              <span className={`badge ${BREED_BADGE[breed] || "badge-green"}`} style={{ fontSize:"0.65rem" }}>Primary</span>
+                              <span className={`badge ${BREED_BADGE[breed] || "badge-green"}`} style={{ fontSize:"0.65rem" }}>{t("primary")}</span>
                             </div>
                           </div>
                         </td>
@@ -193,7 +199,7 @@ export default function History() {
                                 className="btn btn-outline btn-sm"
                                 onClick={() => navigate("/result", { state:{ result: item.result || item, previewUrl: null } })}
                               >
-                                <Eye size={13} /> View
+                                <Eye size={13} /> {t("view")}
                               </button>
                             )}
                             <button

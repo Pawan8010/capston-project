@@ -34,7 +34,7 @@ api.interceptors.response.use(
 export const predictBreed = async (imageFile) => {
   const formData = new FormData();
   formData.append("file", imageFile);
-  const response = await api.post("/predict/", formData, {
+  const response = await api.post("/api/predict/", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
@@ -45,7 +45,7 @@ export const predictBreed = async (imageFile) => {
  * @param {string} imageB64 - base64 data URI (data:image/jpeg;base64,...)
  */
 export const realtimePredict = async (imageB64) => {
-  const response = await api.post("/realtime-predict/", { image_b64: imageB64 });
+  const response = await api.post("/api/realtime-predict/", { image_b64: imageB64 });
   return response.data;
 };
 
@@ -54,15 +54,15 @@ export const realtimePredict = async (imageB64) => {
  * @param {{ text, language, breed, confidence }} payload
  */
 export const voiceQuery = async (payload) => {
-  const response = await api.post("/voice-query/", payload);
+  const response = await api.post("/api/voice-query/", payload);
   return response.data;
 };
 
 /**
  * Fetch prediction history for the current user
  */
-export const getPredictionHistory = async () => {
-  const response = await api.get("/history/");
+export const getPredictionHistory = async (params) => {
+  const response = await api.get("/api/history/", { params });
   return response.data;
 };
 
@@ -70,7 +70,7 @@ export const getPredictionHistory = async () => {
  * Get a single prediction record by ID
  */
 export const getPredictionById = async (id) => {
-  const response = await api.get(`/history/${id}`);
+  const response = await api.get(`/api/history/${id}`);
   return response.data;
 };
 
@@ -78,7 +78,7 @@ export const getPredictionById = async (id) => {
  * Sync user data with the backend after login
  */
 export const syncUser = async (user) => {
-  const response = await api.post("/auth/sync", {
+  const response = await api.post("/api/auth/sync", {
     uid: user.uid,
     email: user.email,
     displayName: user.displayName,
@@ -90,14 +90,22 @@ export const syncUser = async (user) => {
  * Delete a prediction record from history
  */
 export const deletePrediction = async (id) => {
-  await api.delete(`/history/${id}`);
+  await api.delete(`/api/history/${id}`);
+};
+
+/**
+ * Fetch user analytics
+ */
+export const getUserAnalytics = async () => {
+  const response = await api.get("/api/analytics/user");
+  return response.data;
 };
 
 /**
  * Fetch admin dashboard statistics (includes breed distribution + daily counts)
  */
 export const getAdminStats = async () => {
-  const response = await api.get("/admin/stats");
+  const response = await api.get("/api/admin/stats");
   return response.data;
 };
 
@@ -105,9 +113,8 @@ export const getAdminStats = async () => {
  * Fetch all users list (admin-only)
  */
 export const getAdminUsers = async () => {
-  const response = await api.get("/admin/users");
+  const response = await api.get("/api/admin/users");
   return response.data;
 };
 
 export default api;
-

@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import VoiceAssistant from "../components/VoiceAssistant";
 import { predictBreed } from "../services/api";
 import { Upload, Image, X, RefreshCw, Search, Camera, Cpu, CheckCircle2 } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 const BREED_INFO = {
   Gir:        { emoji:"🐄", origin:"Gujarat, India",         milk:"6–8 L/day",   badge:"badge-green"  },
@@ -13,16 +14,17 @@ const BREED_INFO = {
   Sahiwal:    { emoji:"🐄", origin:"Punjab, India/Pakistan", milk:"10–16 L/day", badge:"badge-purple" },
 };
 
-const TIPS = [
-  { icon:"☀️",  text:"Use natural daylight for clearest results" },
-  { icon:"🎯",  text:"Ensure full body of the animal is visible"  },
-  { icon:"📐",  text:"Take photos at eye level for accuracy"     },
-  { icon:"🚫",  text:"Avoid blurry or overexposed images"        },
+const TIPS = (t) => [
+  { icon:"☀️",  text: t("tip_daylight") || "Use natural daylight for clearest results" },
+  { icon:"🎯",  text: t("tip_fullbody") || "Ensure full body of the animal is visible"  },
+  { icon:"📐",  text: t("tip_eyelevel") || "Take photos at eye level for accuracy"     },
+  { icon:"🚫",  text: t("tip_blurry") || "Avoid blurry or overexposed images"        },
 ];
 
 export default function UploadPage() {
   const navigate  = useNavigate();
   const inputRef  = useRef(null);
+  const { t } = useLanguage();
 
   const [file,     setFile]    = useState(null);
   const [preview,  setPreview] = useState(null);
@@ -66,7 +68,13 @@ export default function UploadPage() {
     } catch (err) {
       clearInterval(iv);
       setProgress(0);
-      setError(err?.response?.data?.detail || "Prediction failed. Please try again.");
+      if (err.response?.data?.detail?.error === "image_too_blurry") {
+        setError("📷 Image is too blurry. Move closer or use better lighting.");
+      } else {
+        // detail might be a string or object
+        const detail = err?.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : "Prediction failed. Please try again.");
+      }
     } finally { setLoading(false); }
   };
 
@@ -80,15 +88,15 @@ export default function UploadPage() {
         {/* Header */}
         <div className="page-header">
           <div className="breadcrumb">
-            <Link to="/dashboard" className="breadcrumb-link" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>Dashboard</Link>
+            <Link to="/dashboard" className="breadcrumb-link" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>{t("dashboard")}</Link>
             <span className="breadcrumb-sep">/</span>
-            <span style={{ color:"var(--green-400)", fontSize:"0.82rem", fontWeight:600 }}>Analyse</span>
+            <span style={{ color:"var(--green-400)", fontSize:"0.82rem", fontWeight:600 }}>{t("upload")}</span>
           </div>
           <h2 style={{ fontSize:"1.6rem", marginBottom:"0.3rem" }}>
-            🔬 Upload Livestock <span className="gradient-text">Image</span>
+            🔬 {t("upload")} <span className="gradient-text">{t("image")}</span>
           </h2>
           <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-            Upload a clear photo to get AI-powered breed classification
+            {t("upload_desc")}
           </p>
         </div>
 
@@ -120,10 +128,10 @@ export default function UploadPage() {
                       <Camera size={32} color="var(--green-400)" />
                     </div>
                     <p style={{ fontSize:"1.05rem", fontWeight:700, marginBottom:"0.5rem" }}>
-                      Drag &amp; drop livestock photo
+                      {t("drag_drop_photo")}
                     </p>
                     <p style={{ fontSize:"0.85rem", color:"var(--slate-400)", marginBottom:"1.5rem" }}>
-                      or click to browse files
+                      {t("or_click_browse")}
                     </p>
                     <div style={{ display:"flex", gap:"0.5rem", flexWrap:"wrap", justifyContent:"center" }}>
                       {["JPG","PNG","WEBP","Max 10 MB"].map(c => (
@@ -139,21 +147,21 @@ export default function UploadPage() {
                 {preview ? (
                   <>
                     <button type="button" className="btn btn-ghost" style={{ flex:1 }} onClick={reset}>
-                      <X size={15} /> Remove
+                      <X size={15} /> {t("remove")}
                     </button>
                     <button type="button" className="btn btn-outline" style={{ flex:1 }} onClick={() => inputRef.current?.click()}>
-                      <RefreshCw size={15} /> Change
+                      <RefreshCw size={15} /> {t("change")}
                     </button>
                     <button type="submit" className="btn btn-primary" style={{ flex:2 }} disabled={loading}>
                       {loading
-                        ? <><span className="spinner" style={{ width:15,height:15,borderWidth:2 }} /> Analysing…</>
-                        : <><Search size={15} /> Analyse Breed</>
+                        ? <><span className="spinner" style={{ width:15,height:15,borderWidth:2 }} /> {t("analysing")}</>
+                        : <><Search size={15} /> {t("analyse_breed")}</>
                       }
                     </button>
                   </>
                 ) : (
                   <button type="button" className="btn btn-primary w-full" onClick={() => inputRef.current?.click()}>
-                    <Upload size={16} /> Browse Files
+                    <Upload size={16} /> {t("browse_files_btn")}
                   </button>
                 )}
               </div>
@@ -162,7 +170,7 @@ export default function UploadPage() {
               {loading && (
                 <div style={{ marginTop:"1rem" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.4rem", fontSize:"0.78rem", color:"var(--slate-400)" }}>
-                    <span>⚙️ Running AI analysis…</span>
+                    <span>⚙️ {t("running_ai")}</span>
                     <span>{progress}%</span>
                   </div>
                   <div className="progress-wrap" style={{ height:6 }}>
@@ -179,9 +187,9 @@ export default function UploadPage() {
 
               {/* Tips */}
               <div className="card">
-                <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"1rem" }}>💡 Photo Tips</div>
+                <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"1rem" }}>💡 {t("photo_tips")}</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:"0.65rem" }}>
-                  {TIPS.map(t => (
+                  {TIPS(t).map(t => (
                     <div key={t.text} style={{ display:"flex", alignItems:"flex-start", gap:"0.6rem", fontSize:"0.82rem", color:"var(--slate-300)" }}>
                       <span style={{ flexShrink:0 }}>{t.icon}</span>
                       <span>{t.text}</span>
@@ -192,7 +200,7 @@ export default function UploadPage() {
 
               {/* Detectable breeds */}
               <div className="card">
-                <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"1rem" }}>🐄 Detectable Breeds</div>
+                <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"1rem" }}>🐄 {t("detectable_breeds")}</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:"0.55rem" }}>
                   {Object.entries(BREED_INFO).map(([breed, info]) => (
                     <div key={breed} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0.6rem 0.85rem", borderRadius:"var(--radius-md)", background:"var(--bg-700)", border:"1px solid var(--border)" }}>

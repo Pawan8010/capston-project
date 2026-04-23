@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { registerWithEmailAndPassword, signInWithGoogle } from "../services/auth";
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight, CheckCircle2 } from "lucide-react";
+import LanguageToggle from "../components/LanguageToggle";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -10,6 +12,7 @@ export default function Signup() {
   const [loading, setLoading]   = useState(false);
   const [gloading, setGloading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const { t } = useLanguage();
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -46,6 +49,10 @@ export default function Signup() {
       <div className="orb orb-green" style={{ width:500,height:500,top:-100,right:-100,opacity:0.25 }} />
       <div className="orb orb-blue"  style={{ width:300,height:300,bottom:0,left:0,opacity:0.2 }} />
 
+      <div style={{ position: "absolute", top: "1rem", right: "1rem", zIndex: 10 }}>
+        <LanguageToggle />
+      </div>
+
       <div className="auth-card anim-fadeup" style={{ position:"relative", zIndex:1 }}>
         {/* Brand */}
         <div style={{ textAlign:"center", marginBottom:"2rem" }}>
@@ -53,10 +60,10 @@ export default function Signup() {
             🐄
           </div>
           <h1 style={{ fontSize:"1.5rem", marginBottom:"0.3rem" }}>
-            Join <span className="gradient-text">LivestockAI</span>
+            {t("join")} <span className="gradient-text">LivestockAI</span>
           </h1>
           <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-            Create a free account to start analysing
+            {t("create_free_account")}
           </p>
         </div>
 
@@ -68,21 +75,21 @@ export default function Signup() {
           style={{ marginBottom:"1.25rem", padding:"0.75rem", border:"1.5px solid var(--border)" }}
         >
           {gloading
-            ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> Signing up…</>
-            : <><span style={{ fontSize:"1.1rem" }}>🔐</span> Continue with Google</>
+            ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> {t("signing_up")}</>
+            : <><span style={{ fontSize:"1.1rem" }}>🔐</span> {t("continue_google")}</>
           }
         </button>
 
         {/* Divider */}
         <div style={{ display:"flex", alignItems:"center", gap:"0.75rem", marginBottom:"1.25rem" }}>
           <div style={{ flex:1,height:1,background:"var(--border)" }} />
-          <span style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>or create with email</span>
+          <span style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>{t("or_create_email")}</span>
           <div style={{ flex:1,height:1,background:"var(--border)" }} />
         </div>
 
         <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:"0.85rem" }}>
           <div className="form-group">
-            <label className="form-label">Full Name</label>
+            <label className="form-label">{t("full_name")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><User size={15} /></span>
               <input className="input" type="text" name="name" placeholder="Your full name"
@@ -91,7 +98,7 @@ export default function Signup() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Email address</label>
+            <label className="form-label">{t("email_address")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><Mail size={15} /></span>
               <input className="input" type="email" name="email" placeholder="you@example.com"
@@ -100,7 +107,7 @@ export default function Signup() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password</label>
+            <label className="form-label">{t("password")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><Lock size={15} /></span>
               <input className="input" type={showPass ? "text" : "password"} name="password"
@@ -125,7 +132,7 @@ export default function Signup() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Confirm Password</label>
+            <label className="form-label">{t("confirm_password")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon">
                 {form.confirm && form.confirm === form.password
@@ -142,15 +149,15 @@ export default function Signup() {
           <button type="submit" className="btn btn-primary w-full"
             disabled={loading} style={{ padding:"0.85rem", marginTop:"0.25rem" }}>
             {loading
-              ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> Creating account…</>
-              : <>Create Account <ArrowRight size={16} /></>
+              ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> {t("creating_account")}</>
+              : <>{t("create_account_btn")} <ArrowRight size={16} /></>
             }
           </button>
         </form>
 
         <div style={{ textAlign:"center", marginTop:"1.5rem", fontSize:"0.875rem", color:"var(--slate-400)" }}>
-          Already have an account?{" "}
-          <Link to="/login" style={{ color:"var(--green-400)", fontWeight:600 }}>Sign in →</Link>
+          {t("already_have_account")}{" "}
+          <Link to="/login" style={{ color:"var(--green-400)", fontWeight:600 }}>{t("sign_in")} →</Link>
         </div>
       </div>
     </div>
