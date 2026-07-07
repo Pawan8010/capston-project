@@ -1,234 +1,261 @@
-import React, { useState, useRef, useCallback } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import Sidebar from "../components/Sidebar";
-import VoiceAssistant from "../components/VoiceAssistant";
+import React, { useCallback, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Camera,
+  CheckCircle2,
+  ClipboardCheck,
+  Cpu,
+  FileImage,
+  ImageUp,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SunMedium,
+  Target,
+  X,
+} from "lucide-react";
+import AppShell from "../components/AppShell";
+import PageHeader from "../components/PageHeader";
 import { predictBreed } from "../services/api";
-import { Upload, Image, X, RefreshCw, Search, Camera, Cpu, CheckCircle2 } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
 
-const BREED_INFO = {
-  Gir:        { emoji:"🐄", origin:"Gujarat, India",         milk:"6–8 L/day",   badge:"badge-green"  },
-  Holstein:   { emoji:"🐄", origin:"Netherlands / Germany",  milk:"22–30 L/day", badge:"badge-blue"   },
-  Jersey:     { emoji:"🐄", origin:"Jersey Island",          milk:"14–16 L/day", badge:"badge-amber"  },
-  Red_Sindhi: { emoji:"🐂", origin:"Sindh, Pakistan",        milk:"10–15 L/day", badge:"badge-red"    },
-  Sahiwal:    { emoji:"🐄", origin:"Punjab, India/Pakistan", milk:"10–16 L/day", badge:"badge-purple" },
-};
+const BREEDS = [
+  { name: "Gir", origin: "Gujarat, India", milk: "6-8 L/day", tone: "badge-green" },
+  { name: "Holstein", origin: "Netherlands / Germany", milk: "22-30 L/day", tone: "badge-blue" },
+  { name: "Jersey", origin: "Jersey Island", milk: "14-16 L/day", tone: "badge-amber" },
+  { name: "Red Sindhi", origin: "Sindh region", milk: "10-15 L/day", tone: "badge-red" },
+  { name: "Sahiwal", origin: "Punjab region", milk: "10-16 L/day", tone: "badge-purple" },
+];
 
-const TIPS = (t) => [
-  { icon:"☀️",  text: t("tip_daylight") || "Use natural daylight for clearest results" },
-  { icon:"🎯",  text: t("tip_fullbody") || "Ensure full body of the animal is visible"  },
-  { icon:"📐",  text: t("tip_eyelevel") || "Take photos at eye level for accuracy"     },
-  { icon:"🚫",  text: t("tip_blurry") || "Avoid blurry or overexposed images"        },
+const PHOTO_TIPS = [
+  { icon: SunMedium, title: "Bright light", text: "Use daylight or a clear indoor light source." },
+  { icon: Target, title: "Full body", text: "Keep the animal body visible inside the frame." },
+  { icon: ShieldCheck, title: "Stable shot", text: "Avoid motion blur and heavily cropped images." },
 ];
 
 export default function UploadPage() {
-  const navigate  = useNavigate();
-  const inputRef  = useRef(null);
+  const navigate = useNavigate();
+  const inputRef = useRef(null);
   const { t } = useLanguage();
 
-  const [file,     setFile]    = useState(null);
-  const [preview,  setPreview] = useState(null);
-  const [loading,  setLoading] = useState(false);
-  const [error,    setError]   = useState("");
-  const [dragging, setDragging]= useState(false);
-  const [progress, setProgress]= useState(0);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState(0);
 
-  const acceptFile = (f) => {
-    if (!f || !f.type.startsWith("image/")) {
-      setError("Please select a valid image file (JPG, PNG, WEBP)."); return;
+  const acceptFile = (selectedFile) => {
+    if (!selectedFile || !selectedFile.type.startsWith("image/")) {
+      setError("Please select a valid image file: JPG, PNG, or WEBP.");
+      return;
     }
-    if (f.size > 10 * 1024 * 1024) {
-      setError("Image must be smaller than 10 MB."); return;
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError("Image must be smaller than 10 MB.");
+      return;
     }
-    setError(""); setFile(f); setPreview(URL.createObjectURL(f));
+
+    if (preview) URL.revokeObjectURL(preview);
+    setError("");
+    setFile(selectedFile);
+    setPreview(URL.createObjectURL(selectedFile));
   };
 
-  const onInputChange = (e) => acceptFile(e.target.files[0]);
-  const onDragOver    = useCallback((e) => { e.preventDefault(); setDragging(true); }, []);
-  const onDragLeave   = useCallback(() => setDragging(false), []);
-  const onDrop        = useCallback((e) => {
-    e.preventDefault(); setDragging(false);
-    acceptFile(e.dataTransfer.files[0]);
+  const onDragOver = useCallback((event) => {
+    event.preventDefault();
+    setDragging(true);
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file) { setError("Please select an image first."); return; }
-    setLoading(true); setError(""); setProgress(0);
+  const onDragLeave = useCallback(() => setDragging(false), []);
 
-    const iv = setInterval(() => {
-      setProgress(p => { if (p >= 85) { clearInterval(iv); return p; } return p + 10; });
-    }, 200);
+  const onDrop = useCallback((event) => {
+    event.preventDefault();
+    setDragging(false);
+    acceptFile(event.dataTransfer.files[0]);
+  }, [preview]);
+
+  const reset = () => {
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(null);
+    setPreview(null);
+    setError("");
+    setProgress(0);
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!file) {
+      setError("Please select an image first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setProgress(12);
+
+    const timer = setInterval(() => {
+      setProgress((value) => (value >= 88 ? value : value + 8));
+    }, 180);
 
     try {
       const result = await predictBreed(file);
+      clearInterval(timer);
       setProgress(100);
-      clearInterval(iv);
-      setTimeout(() => navigate("/result", { state: { result, previewUrl: preview } }), 400);
+      setTimeout(() => navigate("/result", { state: { result, previewUrl: preview } }), 250);
     } catch (err) {
-      clearInterval(iv);
+      clearInterval(timer);
       setProgress(0);
-      if (err.response?.data?.detail?.error === "image_too_blurry") {
-        setError("📷 Image is too blurry. Move closer or use better lighting.");
+      const detail = err?.response?.data?.detail;
+      if (detail?.error === "image_too_blurry") {
+        setError("Image is too blurry. Try better lighting or a steadier photo.");
       } else {
-        // detail might be a string or object
-        const detail = err?.response?.data?.detail;
-        setError(typeof detail === 'string' ? detail : "Prediction failed. Please try again.");
+        setError(typeof detail === "string" ? detail : "Prediction failed. Please try again.");
       }
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const reset = () => { setFile(null); setPreview(null); setError(""); setProgress(0); };
+  const fileSize = file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : "";
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <div className="main-content">
+    <AppShell>
+      <PageHeader
+        eyebrow="Breed analysis"
+        title="Upload Livestock Image"
+        description="Add a clear cattle image and the AI service will return breed, confidence, crossbreed ratio, and care context."
+        breadcrumbs={[
+          { label: t("dashboard"), to: "/dashboard" },
+          { label: t("upload") },
+        ]}
+        actions={(
+          <>
+            <Link to="/camera" className="btn btn-ghost">
+              <Camera size={16} /> Live scanner
+            </Link>
+            <Link to="/history" className="btn btn-outline">
+              <ClipboardCheck size={16} /> History
+            </Link>
+          </>
+        )}
+      />
 
-        {/* Header */}
-        <div className="page-header">
-          <div className="breadcrumb">
-            <Link to="/dashboard" className="breadcrumb-link" style={{ color:"var(--slate-500)", fontSize:"0.82rem" }}>{t("dashboard")}</Link>
-            <span className="breadcrumb-sep">/</span>
-            <span style={{ color:"var(--green-400)", fontSize:"0.82rem", fontWeight:600 }}>{t("upload")}</span>
+      <form onSubmit={handleSubmit} className="upload-workspace">
+        <section className="upload-primary-panel">
+          <button
+            type="button"
+            className={`upload-dropzone${dragging ? " is-dragging" : ""}${preview ? " has-preview" : ""}`}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            onClick={() => !preview && inputRef.current?.click()}
+          >
+            <input ref={inputRef} type="file" accept="image/*" onChange={(event) => acceptFile(event.target.files[0])} />
+
+            {preview ? (
+              <div className="upload-preview-frame">
+                <img src={preview} alt="Selected livestock" />
+                <div className="upload-file-pill">
+                  <CheckCircle2 size={15} />
+                  <span>{file?.name}</span>
+                  <small>{fileSize}</small>
+                </div>
+              </div>
+            ) : (
+              <div className="upload-empty-state">
+                <div className="upload-empty-icon">
+                  <ImageUp size={34} />
+                </div>
+                <h2>Drop livestock image here</h2>
+                <p>or browse from your device. JPG, PNG, and WEBP are supported up to 10 MB.</p>
+                <div className="upload-format-row">
+                  {["JPG", "PNG", "WEBP", "10 MB max"].map((item) => <span key={item}>{item}</span>)}
+                </div>
+              </div>
+            )}
+          </button>
+
+          <div className="upload-controls">
+            {preview ? (
+              <>
+                <button type="button" className="btn btn-ghost" onClick={reset}>
+                  <X size={16} /> Remove
+                </button>
+                <button type="button" className="btn btn-outline" onClick={() => inputRef.current?.click()}>
+                  <RefreshCw size={16} /> Change
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={loading}>
+                  {loading ? <><span className="spinner" /> Analysing</> : <><Search size={16} /> Analyse breed</>}
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn btn-primary" onClick={() => inputRef.current?.click()}>
+                <FileImage size={16} /> Browse image
+              </button>
+            )}
           </div>
-          <h2 style={{ fontSize:"1.6rem", marginBottom:"0.3rem" }}>
-            🔬 {t("upload")} <span className="gradient-text">{t("image")}</span>
-          </h2>
-          <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-            {t("upload_desc")}
-          </p>
-        </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 340px", gap:"1.5rem" }}>
+          {loading && (
+            <div className="upload-progress">
+              <div>
+                <span>Running image quality and breed model</span>
+                <strong>{progress}%</strong>
+              </div>
+              <div className="progress-wrap">
+                <div className="progress-bar" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
 
-            {/* Left: Drop zone */}
+          {error && <div className="alert alert-error upload-alert">Error: {error}</div>}
+        </section>
+
+        <aside className="upload-side-panel">
+          <div className="workspace-card">
+            <div className="workspace-card-title">
+              <ShieldCheck size={18} />
+              <span>Photo checklist</span>
+            </div>
+            <div className="tips-list">
+              {PHOTO_TIPS.map(({ icon: Icon, title, text }) => (
+                <div key={title} className="tip-row">
+                  <Icon size={18} />
+                  <div>
+                    <strong>{title}</strong>
+                    <p>{text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="workspace-card">
+            <div className="workspace-card-title">
+              <Cpu size={18} />
+              <span>Detectable breeds</span>
+            </div>
+            <div className="breed-list">
+              {BREEDS.map((breed) => (
+                <div key={breed.name} className="breed-row">
+                  <div>
+                    <strong>{breed.name}</strong>
+                    <p>{breed.origin}</p>
+                  </div>
+                  <span className={`badge ${breed.tone}`}>{breed.milk}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="workspace-card model-card">
+            <Cpu size={20} />
             <div>
-              <div
-                className={`drop-zone${dragging ? " drag-over" : ""}`}
-                style={{ minHeight:380, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", position:"relative" }}
-                onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
-                onClick={() => !preview && inputRef.current?.click()}
-              >
-                <input ref={inputRef} type="file" accept="image/*" onChange={onInputChange} id="file-upload" />
-
-                {preview ? (
-                  <div style={{ width:"100%", height:"100%", position:"relative" }}>
-                    <img src={preview} alt="Preview"
-                      style={{ width:"100%", maxHeight:380, borderRadius:"var(--radius-md)", objectFit:"cover", display:"block" }} />
-                    <div style={{ position:"absolute", top:"0.75rem", right:"0.75rem", background:"rgba(0,0,0,0.7)", borderRadius:"var(--radius-sm)", padding:"0.3rem 0.7rem", fontSize:"0.75rem", backdropFilter:"blur(8px)", display:"flex", alignItems:"center", gap:"0.4rem" }}>
-                      <CheckCircle2 size={12} color="var(--green-400)" />
-                      {file.name.length > 28 ? file.name.slice(0,25)+"…" : file.name}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ width:72,height:72,background:"rgba(22,163,74,0.1)",borderRadius:"var(--radius-xl)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"1.25rem",border:"2px solid rgba(22,163,74,0.2)" }}>
-                      <Camera size={32} color="var(--green-400)" />
-                    </div>
-                    <p style={{ fontSize:"1.05rem", fontWeight:700, marginBottom:"0.5rem" }}>
-                      {t("drag_drop_photo")}
-                    </p>
-                    <p style={{ fontSize:"0.85rem", color:"var(--slate-400)", marginBottom:"1.5rem" }}>
-                      {t("or_click_browse")}
-                    </p>
-                    <div style={{ display:"flex", gap:"0.5rem", flexWrap:"wrap", justifyContent:"center" }}>
-                      {["JPG","PNG","WEBP","Max 10 MB"].map(c => (
-                        <span key={c} className="chip">{c}</span>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Controls */}
-              <div style={{ marginTop:"1rem", display:"flex", gap:"0.75rem" }}>
-                {preview ? (
-                  <>
-                    <button type="button" className="btn btn-ghost" style={{ flex:1 }} onClick={reset}>
-                      <X size={15} /> {t("remove")}
-                    </button>
-                    <button type="button" className="btn btn-outline" style={{ flex:1 }} onClick={() => inputRef.current?.click()}>
-                      <RefreshCw size={15} /> {t("change")}
-                    </button>
-                    <button type="submit" className="btn btn-primary" style={{ flex:2 }} disabled={loading}>
-                      {loading
-                        ? <><span className="spinner" style={{ width:15,height:15,borderWidth:2 }} /> {t("analysing")}</>
-                        : <><Search size={15} /> {t("analyse_breed")}</>
-                      }
-                    </button>
-                  </>
-                ) : (
-                  <button type="button" className="btn btn-primary w-full" onClick={() => inputRef.current?.click()}>
-                    <Upload size={16} /> {t("browse_files_btn")}
-                  </button>
-                )}
-              </div>
-
-              {/* Progress */}
-              {loading && (
-                <div style={{ marginTop:"1rem" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.4rem", fontSize:"0.78rem", color:"var(--slate-400)" }}>
-                    <span>⚙️ {t("running_ai")}</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="progress-wrap" style={{ height:6 }}>
-                    <div className="progress-bar" style={{ width:`${progress}%`, transition:"width 0.35s ease" }} />
-                  </div>
-                </div>
-              )}
-
-              {error && <div className="alert alert-error" style={{ marginTop:"1rem" }}>⚠️ {error}</div>}
-            </div>
-
-            {/* Right: Info panels */}
-            <div style={{ display:"flex", flexDirection:"column", gap:"1.25rem" }}>
-
-              {/* Tips */}
-              <div className="card">
-                <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"1rem" }}>💡 {t("photo_tips")}</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:"0.65rem" }}>
-                  {TIPS(t).map(t => (
-                    <div key={t.text} style={{ display:"flex", alignItems:"flex-start", gap:"0.6rem", fontSize:"0.82rem", color:"var(--slate-300)" }}>
-                      <span style={{ flexShrink:0 }}>{t.icon}</span>
-                      <span>{t.text}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Detectable breeds */}
-              <div className="card">
-                <div style={{ fontWeight:700, fontSize:"0.9rem", marginBottom:"1rem" }}>🐄 {t("detectable_breeds")}</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:"0.55rem" }}>
-                  {Object.entries(BREED_INFO).map(([breed, info]) => (
-                    <div key={breed} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0.6rem 0.85rem", borderRadius:"var(--radius-md)", background:"var(--bg-700)", border:"1px solid var(--border)" }}>
-                      <div>
-                        <div style={{ fontSize:"0.82rem", fontWeight:600 }}>{info.emoji} {breed.replace("_"," ")}</div>
-                        <div style={{ fontSize:"0.7rem", color:"var(--slate-500)" }}>{info.origin}</div>
-                      </div>
-                      <span className={`badge ${info.badge}`} style={{ fontSize:"0.65rem" }}>{info.milk}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Model info */}
-              <div className="card card-green">
-                <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"0.5rem" }}>
-                  <Cpu size={18} color="var(--green-400)" />
-                  <span style={{ fontWeight:700, fontSize:"0.875rem" }}>MobileNetV2 Model</span>
-                </div>
-                <p style={{ fontSize:"0.78rem", color:"var(--slate-400)" }}>
-                  Transfer learning · 94.2% test accuracy · 5 breed classes
-                </p>
-              </div>
+              <strong>Realtime ML service</strong>
+              <p>Connected to FastAPI prediction endpoints with deterministic fallback when TensorFlow is unavailable.</p>
             </div>
           </div>
-        </form>
-      </div>
-      <VoiceAssistant />
-    </div>
+        </aside>
+      </form>
+    </AppShell>
   );
 }

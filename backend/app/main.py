@@ -10,6 +10,7 @@ import app.firebase_admin  # initializes Firebase Admin SDK on startup
 from app.routes import predict, auth, history, admin, realtime, voice, analytics
 from app.services.ml_service import BreedPredictor
 from app.core.config import settings
+from app.config import client
 
 app = FastAPI(title="Livestock AI API", version="1.0.0")
 
@@ -40,19 +41,33 @@ app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"]
 @app.on_event("startup")
 async def startup_event():
     """Load ML model once when the server starts."""
-    try:
-        app.state.predictor = BreedPredictor(
-            model_path=settings.MODEL_PATH,
-            class_index_path=settings.CLASS_INDEX_PATH
-        )
-        logger.info("ML model loaded successfully at startup")
-    except Exception as e:
-        logger.error(f"Failed to load ML model: {e}")
-        raise
+    app.state.mongo_connected = False
+    if client is None:
+        logger.warning("MongoDB driver unavailable - running with in-memory fallback storage.")
+    else:
+        try:
+            await client.admin.command("ping")
+            app.state.mongo_connected = True
+            logger.info("MongoDB connected successfully.")
+        except Exception as exc:
+            logger.warning("MongoDB connection failed - app may use in-memory fallback where implemented: %s", exc)
+
+    app.state.predictor = BreedPredictor(
+        model_path=settings.MODEL_PATH,
+        class_index_path=settings.CLASS_INDEX_PATH
+    )
+    logger.info("ML predictor ready in %s mode", app.state.predictor.mode)
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "model_loaded": hasattr(app.state, "predictor"), "version": "1.0.0"}
+    predictor = getattr(app.state, "predictor", None)
+    return {
+        "status": "ok",
+        "model_loaded": predictor is not None,
+        "model_mode": getattr(predictor, "mode", "not_loaded"),
+        "mongo_connected": getattr(app.state, "mongo_connected", False),
+        "version": "1.0.0",
+    }
 
 @app.get("/")
 def root():

@@ -1,41 +1,79 @@
 /**
  * CameraScanner.jsx
  * Real-time livestock breed detection using the device webcam.
- * Captures frames every 2.5 seconds and sends them to /realtime-predict.
- * Shows an animated scanning overlay + live breed prediction overlay.
+ * Uses a non-overlapping prediction loop so live scans stay responsive without
+ * flooding the backend when inference takes longer than the target interval.
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { realtimePredict } from "../services/api";
-import { Camera, CameraOff, RefreshCw, Zap } from "lucide-react";
+import { Camera, CameraOff, RefreshCw, Zap, Radio, Gauge } from "lucide-react";
 
 const BREED_BADGE = {
-  Gir: "badge-green", Holstein: "badge-blue", Jersey: "badge-amber",
-  Red_Sindhi: "badge-red", Sahiwal: "badge-purple",
+  Gir: "badge-green",
+  Holstein: "badge-blue",
+  Jersey: "badge-amber",
+  Red_Sindhi: "badge-red",
+  Sahiwal: "badge-purple",
 };
 
-const CONFIDENCE_COLOR = (c) =>
-  c >= 0.8 ? "var(--green-400)" : c >= 0.6 ? "var(--amber-400)" : "var(--red-400)";
+const TARGET_SCAN_MS = 900;
+const SAVE_SCAN_MS = 6500;
 
-export default function CameraScanner({ onCapture }) {
-  const videoRef    = useRef(null);
-  const canvasRef   = useRef(null);
-  const streamRef   = useRef(null);
-  const intervalRef = useRef(null);
+const normalizeConfidence = (value = 0) => (value > 1 ? value / 100 : value);
+const displayPercent = (value = 0) => Math.round(normalizeConfidence(value) * 100);
+const CONFIDENCE_COLOR = (c) => {
+  const normalized = normalizeConfidence(c);
+  return normalized >= 0.8 ? "var(--green-400)" : normalized >= 0.6 ? "var(--amber-400)" : "var(--red-400)";
+};
 
-  const [active,     setActive]     = useState(false);
-  const [scanning,   setScanning]   = useState(false);
+export default function CameraScanner({ onCapture, onTelemetry }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const timerRef = useRef(null);
+  const inFlightRef = useRef(false);
+  const mountedRef = useRef(true);
+  const onTelemetryRef = useRef(onTelemetry);
+  const latestTelemetryRef = useRef({});
+  const lastSavedAtRef = useRef(0);
+
+  const [active, setActive] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [prediction, setPrediction] = useState(null);
-  const [error,      setError]      = useState("");
-  const [camError,   setCamError]   = useState("");
+  const [error, setError] = useState("");
+  const [camError, setCamError] = useState("");
   const [frameCount, setFrameCount] = useState(0);
+  const [latencyMs, setLatencyMs] = useState(0);
+  const [lastScanAt, setLastScanAt] = useState(null);
+  const [scanRate, setScanRate] = useState(0);
+  const [lastAnnounced, setLastAnnounced] = useState("");
 
-  /* ── Camera lifecycle ─────────────────────────────────────────────────── */
+  useEffect(() => {
+    onTelemetryRef.current = onTelemetry;
+  }, [onTelemetry]);
+
+  useEffect(() => {
+    latestTelemetryRef.current = { active, scanning, frameCount, latencyMs, scanRate, lastScanAt };
+  }, [active, frameCount, latencyMs, lastScanAt, scanRate, scanning]);
+
+  const publishTelemetry = useCallback((next = {}) => {
+    onTelemetryRef.current?.({
+      ...latestTelemetryRef.current,
+      ...next,
+    });
+  }, []);
+
   const startCamera = async () => {
-    setCamError(""); setError("");
+    setCamError("");
+    setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "environment" },
+        video: {
+          width: { ideal: 960 },
+          height: { ideal: 720 },
+          facingMode: "environment",
+        },
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -43,53 +81,92 @@ export default function CameraScanner({ onCapture }) {
         await videoRef.current.play();
       }
       setActive(true);
-    } catch (e) {
-      setCamError("Camera access denied. Please allow camera permissions.");
+      publishTelemetry({ active: true });
+    } catch {
+      setCamError("Camera permission is blocked. Click the browser camera icon near the address bar, allow camera access for 127.0.0.1, then press Start Camera again.");
     }
   };
 
   const stopCamera = useCallback(() => {
-    clearInterval(intervalRef.current);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    clearTimeout(timerRef.current);
+    inFlightRef.current = false;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setActive(false);
     setScanning(false);
     setPrediction(null);
-  }, []);
+    publishTelemetry({ active: false, scanning: false });
+  }, [publishTelemetry]);
 
-  /* ── Frame capture & prediction ──────────────────────────────────────── */
   const captureAndPredict = useCallback(async () => {
-    const video  = videoRef.current;
+    if (inFlightRef.current) return;
+
+    const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
 
-    canvas.width  = video.videoWidth  || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    inFlightRef.current = true;
+    const started = performance.now();
+    canvas.width = video.videoWidth || 960;
+    canvas.height = video.videoHeight || 720;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const b64 = canvas.toDataURL("image/jpeg", 0.8);
+    const b64 = canvas.toDataURL("image/jpeg", 0.72);
     setScanning(true);
     setFrameCount((n) => n + 1);
+    publishTelemetry({ scanning: true });
 
     try {
-      const result = await realtimePredict(b64);
+      const shouldSave = Date.now() - lastSavedAtRef.current > SAVE_SCAN_MS;
+      const result = await realtimePredict(b64, { save: shouldSave });
+      if (result.id) lastSavedAtRef.current = Date.now();
+      const elapsed = Math.round(performance.now() - started);
+      const now = Date.now();
+
       setPrediction(result);
+      setLatencyMs(elapsed);
+      setLastScanAt(now);
+      setScanRate((rate) => (rate ? Math.round((rate * 0.7 + (1000 / Math.max(elapsed, 1)) * 0.3) * 10) / 10 : Math.round((1000 / Math.max(elapsed, 1)) * 10) / 10));
       setError("");
-      if (onCapture) onCapture(result, b64);
-    } catch (e) {
-      setError("Prediction failed – check if the server is running.");
+      onCapture?.(result, b64);
+      publishTelemetry({
+        scanning: false,
+        latencyMs: elapsed,
+        lastScanAt: now,
+      });
+    } catch {
+      setError("Prediction failed. Check that the backend is running.");
     } finally {
-      setScanning(false);
+      inFlightRef.current = false;
+      if (mountedRef.current) setScanning(false);
     }
-  }, [onCapture]);
+  }, [onCapture, publishTelemetry]);
 
-  const [lastAnnounced, setLastAnnounced] = useState("");
-
-  /* ── Voice feedback for detections ─────────────────────────────────── */
   useEffect(() => {
-    if (prediction && prediction.confidence > 0.85 && prediction.primary_breed !== lastAnnounced) {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!active) return undefined;
+
+    const run = async () => {
+      await captureAndPredict();
+      timerRef.current = setTimeout(run, TARGET_SCAN_MS);
+    };
+
+    timerRef.current = setTimeout(run, 250);
+    return () => clearTimeout(timerRef.current);
+  }, [active, captureAndPredict]);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  useEffect(() => {
+    const confidence = normalizeConfidence(prediction?.confidence);
+    if (prediction && confidence > 0.85 && prediction.primary_breed !== lastAnnounced) {
       const msg = new SpeechSynthesisUtterance(`${prediction.primary_breed.replace("_", " ")} detected`);
       msg.lang = "en-US";
       window.speechSynthesis.speak(msg);
@@ -97,29 +174,14 @@ export default function CameraScanner({ onCapture }) {
     }
   }, [prediction, lastAnnounced]);
 
-  /* Start periodic prediction when camera is active */
-
-  useEffect(() => {
-    if (active) {
-      intervalRef.current = setInterval(captureAndPredict, 2500);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [active, captureAndPredict]);
-
-  /* Cleanup on unmount */
-  useEffect(() => () => stopCamera(), [stopCamera]);
-
-  /* ── UI ──────────────────────────────────────────────────────────────── */
-  const conf    = prediction?.confidence || 0;
-  const breed   = prediction?.primary_breed || "";
-  const badge   = BREED_BADGE[breed] || "badge-green";
+  const confidence = normalizeConfidence(prediction?.confidence);
+  const breed = prediction?.primary_breed || "";
+  const badge = BREED_BADGE[breed] || "badge-blue";
+  const probabilities = prediction?.all_probabilities || prediction?.all_predictions || {};
 
   return (
-    <div className="camera-scanner">
-      {/* Video viewport */}
-      <div className="camera-viewport">
+    <div className="camera-scanner ag-scanner">
+      <div className="camera-viewport ag-camera-viewport">
         <video
           ref={videoRef}
           playsInline
@@ -129,26 +191,19 @@ export default function CameraScanner({ onCapture }) {
         />
         <canvas ref={canvasRef} style={{ display: "none" }} />
 
-        {/* Placeholder when off */}
         {!active && (
-          <div className="camera-placeholder">
-            <div className="camera-icon-wrap">
-              <Camera size={48} />
+          <div className="camera-placeholder ag-camera-placeholder">
+            <div className="camera-icon-wrap ag-camera-icon">
+              <Camera size={42} />
             </div>
-            <p className="camera-placeholder-text">
-              Click <strong>Start Camera</strong> to begin real-time scanning
-            </p>
-            <p style={{ fontSize: "0.8rem", color: "var(--slate-500)", marginTop: "0.5rem" }}>
-              Works like Google Lens — hold your livestock in frame
-            </p>
+            <p className="camera-placeholder-text">Start the live scanner</p>
+            <p className="ag-muted">Continuous frame analysis with backend-safe real-time pacing.</p>
           </div>
         )}
 
-        {/* Scanning overlay */}
         {active && (
           <>
-            {/* Corner brackets */}
-            <div className="scan-overlay">
+            <div className="scan-overlay ag-scan-overlay">
               <div className="scan-corner tl" />
               <div className="scan-corner tr" />
               <div className="scan-corner bl" />
@@ -156,40 +211,40 @@ export default function CameraScanner({ onCapture }) {
               <div className={`scan-line ${scanning ? "scanning" : ""}`} />
             </div>
 
-            {/* Live prediction badge */}
+            <div className="ag-live-strip">
+              <span className="ag-live-dot" />
+              <span>{scanning ? "Analysing frame" : "Live stream ready"}</span>
+            </div>
+
             {prediction && (
-              <div className="camera-badge">
+              <div className="camera-badge ag-camera-badge">
                 <div className="camera-badge-breed">
-                  <span style={{ fontWeight: 700 }}>{breed.replace("_", " ")}</span>
-                  <span className={`badge ${badge}`} style={{ fontSize: "0.65rem" }}>
-                    {Math.round(conf * 100)}%
-                  </span>
+                  <span>{breed.replace("_", " ")}</span>
+                  <span className={`badge ${badge}`}>{displayPercent(prediction.confidence)}%</span>
                 </div>
                 <div className="camera-badge-bar">
                   <div
                     className="camera-badge-fill"
-                    style={{ width: `${Math.round(conf * 100)}%`, background: CONFIDENCE_COLOR(conf) }}
+                    style={{ width: `${displayPercent(prediction.confidence)}%`, background: CONFIDENCE_COLOR(prediction.confidence) }}
                   />
                 </div>
                 {prediction.secondary_breed && (
                   <div className="camera-badge-secondary">
-                    Secondary: {prediction.secondary_breed.replace("_", " ")}
+                    Secondary signal: {prediction.secondary_breed.replace("_", " ")}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Frame counter */}
-            <div className="camera-frame-count">
-              <Zap size={10} />
-              {scanning ? "Analysing…" : `Frame ${frameCount} scanned`}
+            <div className="camera-frame-count ag-frame-count">
+              <Zap size={11} />
+              {scanning ? "Scanning" : `Frame ${frameCount}`}
             </div>
           </>
         )}
       </div>
 
-      {/* Controls */}
-      <div className="camera-controls">
+      <div className="camera-controls ag-camera-controls">
         {!active ? (
           <button id="start-camera-btn" className="btn btn-primary" onClick={startCamera}>
             <Camera size={16} /> Start Camera
@@ -201,46 +256,52 @@ export default function CameraScanner({ onCapture }) {
             </button>
             <button className="btn btn-outline" onClick={captureAndPredict} disabled={scanning}>
               <RefreshCw size={16} className={scanning ? "spin" : ""} />
-              {scanning ? "Scanning…" : "Scan Now"}
+              {scanning ? "Scanning" : "Scan Now"}
             </button>
           </>
         )}
+        <div className="ag-scanner-stats">
+          <span><Radio size={14} /> {active ? "Online" : "Idle"}</span>
+          <span><Gauge size={14} /> {latencyMs ? `${latencyMs} ms` : "-- ms"}</span>
+          <span>{scanRate ? `${scanRate} fps inference` : "waiting"}</span>
+        </div>
       </div>
 
-      {/* Errors */}
       {(camError || error) && (
-        <div className="alert alert-error" style={{ marginTop: "0.75rem" }}>
-          ⚠️ {camError || error}
+        <div className="alert alert-error ag-alert">
+          {camError || error}
         </div>
       )}
 
-      {/* All predictions breakdown */}
-      {prediction?.all_predictions && (
-        <div className="camera-breakdown card" style={{ marginTop: "1rem" }}>
-          <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--slate-300)" }}>
-            🔬 Live Breed Breakdown
-          </div>
-          {Object.entries(prediction.all_predictions)
+      {Object.keys(probabilities).length > 0 && (
+        <div className="camera-breakdown ag-breakdown-panel">
+          <div className="ag-panel-title">Live Probability Artifact</div>
+          {Object.entries(probabilities)
             .sort(([, a], [, b]) => b - a)
-            .map(([b, p]) => (
-              <div key={b} style={{ marginBottom: "0.5rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: "0.2rem" }}>
-                  <span style={{ fontWeight: b === breed ? 700 : 400 }}>{b.replace("_", " ")}</span>
-                  <span style={{ color: CONFIDENCE_COLOR(p) }}>{Math.round(p * 100)}%</span>
+            .map(([name, probability]) => {
+              const percent = displayPercent(probability);
+              return (
+                <div key={name} className="ag-probability-row">
+                  <div>
+                    <span className={name === breed ? "ag-probability-active" : ""}>
+                      {name.replace("_", " ")}
+                    </span>
+                    <small>{percent}% confidence</small>
+                  </div>
+                  <div className="progress-wrap">
+                    <div
+                      className="progress-bar"
+                      style={{
+                        width: `${percent}%`,
+                        background: name === breed
+                          ? "linear-gradient(90deg,var(--google-blue),var(--google-green))"
+                          : "var(--bg-600)",
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="progress-wrap" style={{ height: 4 }}>
-                  <div
-                    className="progress-bar"
-                    style={{
-                      width: `${Math.round(p * 100)}%`,
-                      background: b === breed
-                        ? "linear-gradient(90deg,var(--green-600),var(--green-400))"
-                        : "var(--bg-600)",
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
         </div>
       )}
     </div>

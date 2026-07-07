@@ -9,17 +9,21 @@ Return schema mirrors the original predict_image() function from the notebook:
   primary_breed, secondary_breed, confidence, crossbreed_ratio, all_predictions
 """
 
-import os
 import numpy as np
 from PIL import Image
-from io import BytesIO
 
 import json
 import logging
-import random
+import os
+from pathlib import Path
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
+DEFAULT_LABELS = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
+
+
+class ModelUnavailableError(RuntimeError):
+    """Raised when a real trained model is required but not available."""
 
 try:
     import tensorflow as tf
@@ -30,33 +34,97 @@ except ImportError:
 
 class BreedPredictor:
     def __init__(self, model_path: str, class_index_path: str):
-        self.model_path = model_path
-        self.class_index_path = class_index_path
+        self.model_path = str(self._resolve_path(model_path))
+        self.class_index_path = str(self._resolve_path(class_index_path))
         self.IMG_SIZE = (224, 224)
+        self.labels = self._load_labels()
+        self.model = None
+        self.mode = "model-missing"
+        self.unavailable_reason = ""
         
-        self.labels = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
-        if os.path.exists(self.class_index_path):
-            with open(self.class_index_path, "r") as f:
-                self.labels = json.load(f)
-
-        if TF_AVAILABLE:
+        if TF_AVAILABLE and os.path.exists(self.model_path):
             try:
-                if not os.path.exists(self.model_path):
-                    logger.error(f"Model file missing: {self.model_path}")
-                    raise RuntimeError(f"breed_model.h5 not found at {self.model_path}")
-                
                 self.model = tf.keras.models.load_model(self.model_path)
-                logger.info("BreedPredictor initialized successfully")
+                self.mode = "tensorflow"
+                logger.info("BreedPredictor initialized with TensorFlow model")
             except Exception as e:
-                logger.error(f"Failed to load BreedPredictor: {e}")
-                raise RuntimeError(f"Could not load ML model: {e}")
+                self.unavailable_reason = f"Could not load TensorFlow model: {e}"
+                logger.error("%s", self.unavailable_reason)
         else:
-            self.model = None
+            if not TF_AVAILABLE:
+                self.unavailable_reason = "TensorFlow is not installed for this Python version."
+            else:
+                self.unavailable_reason = f"Model file is missing at {self.model_path}."
+            logger.warning(
+                "%s Run `python ml-service/scripts/prepare_dataset.py` and `bash scripts/train_model.sh` "
+                "to create breed_model.h5.",
+                self.unavailable_reason,
+            )
+
+    def _resolve_path(self, value: str) -> Path:
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        cwd_path = Path.cwd() / path
+        if cwd_path.exists():
+            return cwd_path
+        repo_root = Path(__file__).resolve().parents[3]
+        return repo_root / path
+
+    def _load_labels(self) -> list[str]:
+        if not os.path.exists(self.class_index_path):
+            return DEFAULT_LABELS.copy()
+
+        with open(self.class_index_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if isinstance(data, list):
+            return data
+
+        if isinstance(data, dict):
+            # Keras flow_from_directory stores {"Breed": index}; invert it safely.
+            return [label for label, _ in sorted(data.items(), key=lambda item: item[1])]
+
+        return DEFAULT_LABELS.copy()
 
     def preprocess(self, pil_image: Image.Image) -> np.ndarray:
         img = pil_image.convert("RGB").resize(self.IMG_SIZE)
-        arr = np.array(img, dtype=np.float32) / 255.0
+        arr = np.array(img, dtype=np.float32)
+        if TF_AVAILABLE:
+            arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
         return np.expand_dims(arr, axis=0)
+
+    def _fallback_probabilities(self, pil_image: Image.Image) -> np.ndarray:
+        """
+        Content-aware local fallback used when TensorFlow or a trained model is absent.
+        It is deterministic and keeps the API usable for development/tests; train a real
+        model with ml-service/train.py for production accuracy.
+        """
+        arr = self.preprocess(pil_image)[0]
+        features = np.array(
+            [
+                arr[:, :, 0].mean(),
+                arr[:, :, 1].mean(),
+                arr[:, :, 2].mean(),
+                arr.mean(),
+                arr.std(),
+            ],
+            dtype=np.float32,
+        )
+        prototypes = np.array(
+            [
+                [0.54, 0.39, 0.30, 0.41, 0.25],  # Gir
+                [0.45, 0.44, 0.42, 0.44, 0.33],  # Holstein
+                [0.58, 0.49, 0.39, 0.49, 0.22],  # Jersey
+                [0.62, 0.34, 0.25, 0.40, 0.24],  # Red_Sindhi
+                [0.50, 0.42, 0.32, 0.41, 0.20],  # Sahiwal
+            ],
+            dtype=np.float32,
+        )[: len(self.labels)]
+        distances = np.linalg.norm(prototypes - features, axis=1)
+        logits = -distances * 8.0
+        exp = np.exp(logits - logits.max())
+        return exp / exp.sum()
 
     def predict(self, image_bytes: bytes) -> dict:
         """
@@ -68,13 +136,14 @@ class BreedPredictor:
 
         pil_image = Image.open(BytesIO(image_bytes))
         
-        if TF_AVAILABLE and self.model:
+        if self.model is not None:
             tensor = self.preprocess(pil_image)
             probs = self.model.predict(tensor, verbose=0)[0]
         else:
-            # Mock mode
-            import random
-            probs = np.random.dirichlet(np.ones(len(self.labels)), size=1)[0]
+            raise ModelUnavailableError(
+                f"{self.unavailable_reason} Train the model first so predictions are real: "
+                "`python ml-service/scripts/prepare_dataset.py` then `bash scripts/train_model.sh`."
+            )
         
         top2_idx = np.argsort(probs)[::-1][:2]
         primary_conf   = float(probs[top2_idx[0]])
@@ -83,15 +152,20 @@ class BreedPredictor:
         
         crossbreed_ratio = round(secondary_conf / total, 3) if total > 0 else 0.0
         
+        probability_map = {
+            self.labels[i]: round(float(probs[i]) * 100, 2)
+            for i in range(len(probs))
+        }
+
         return {
             "primary_breed":    self.labels[top2_idx[0]],
             "secondary_breed":  self.labels[top2_idx[1]],
             "confidence":       round(primary_conf * 100, 2),
             "crossbreed_ratio": crossbreed_ratio,
-            "all_probabilities": {
-                self.labels[i]: round(float(probs[i]) * 100, 2)
-                for i in range(len(probs))
-            }
+            "all_probabilities": probability_map,
+            "all_predictions": probability_map,
+            "confidence_format": "percent",
+            "model_mode": self.mode,
         }
 
 def get_predictor(request: Request) -> BreedPredictor:

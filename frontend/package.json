@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "axios": "^1.6.0",
+    "es-toolkit": "^1.46.0",
     "firebase": "^10.7.0",
     "framer-motion": "^12.38.0",
     "leaflet": "^1.9.4",

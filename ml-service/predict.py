@@ -8,16 +8,33 @@ Classes: Gir, Holstein, Jersey, Sahiwal, Red_Sindhi
 """
 
 import os
+import json
 import numpy as np
 from PIL import Image
 import tensorflow as tf
 
 # ── Path to the trained .h5 model ──────────────────────────────────────────
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "breed_model.h5")
+CLASS_INDEX_PATH = os.path.join(os.path.dirname(__file__), "models", "class_indices.json")
 
 # ── Breed classes — MUST match the order used during training ───────────────
 # ImageDataGenerator sorts directories alphabetically, so this order is:
-CLASS_NAMES = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
+DEFAULT_CLASS_NAMES = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
+
+
+def load_class_names() -> list[str]:
+    if not os.path.exists(CLASS_INDEX_PATH):
+        return DEFAULT_CLASS_NAMES.copy()
+    with open(CLASS_INDEX_PATH, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if isinstance(payload, dict):
+        return [label for label, _ in sorted(payload.items(), key=lambda item: item[1])]
+    if isinstance(payload, list):
+        return payload
+    return DEFAULT_CLASS_NAMES.copy()
+
+
+CLASS_NAMES = load_class_names()
 
 # ── Image preprocessing constants (same as Colab notebook) ─────────────────
 IMG_SIZE = (224, 224)
@@ -45,7 +62,8 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
     Matches the Colab preprocessing:  img / 255.0
     """
     img = pil_image.convert("RGB").resize(IMG_SIZE)
-    arr = np.array(img, dtype=np.float32) / 255.0
+    arr = np.array(img, dtype=np.float32)
+    arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
     return arr  # shape: (224, 224, 3)
 
 

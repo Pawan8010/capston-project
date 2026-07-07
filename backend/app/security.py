@@ -1,4 +1,5 @@
 from fastapi import HTTPException, Header
+from app.core.config import settings
 
 try:
     import firebase_admin
@@ -8,7 +9,10 @@ except ImportError:
     FIREBASE_AVAILABLE = False
 
 async def verify_token(authorization: str = Header(None)):
-    if not FIREBASE_AVAILABLE:
+    if settings.AUTH_ALLOW_MOCK and authorization == "Bearer demo-token":
+        return {"uid": "demo_user_123", "email": "demo@livestock.ai", "role": "farmer"}
+
+    if settings.AUTH_ALLOW_MOCK and (not FIREBASE_AVAILABLE or not firebase_admin._apps):
         return {"uid": "mock_user_123", "email": "test@example.com"}
 
     if not authorization or not authorization.startswith("Bearer "):

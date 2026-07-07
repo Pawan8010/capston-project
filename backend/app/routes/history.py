@@ -8,6 +8,7 @@ router = APIRouter()
 async def fetch_history(
     breed: str = Query(None),
     from_date: str = Query(None),
+    limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(verify_token)
 ):
     """
@@ -17,7 +18,8 @@ async def fetch_history(
     predictions = await get_user_predictions(
         user_id=user["uid"],
         breed_filter=breed,
-        from_date=from_date
+        from_date=from_date,
+        limit=limit,
     )
     return {"predictions": predictions, "count": len(predictions)}
 

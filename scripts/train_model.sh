@@ -1,5 +1,6 @@
 #!/bin/bash
-# Train the ML model
-cd ml-service
-pip install tensorflow pillow numpy
+set -e
+
+cd "$(dirname "$0")/../ml-service"
+pip install -r requirements.txt
 python train.py

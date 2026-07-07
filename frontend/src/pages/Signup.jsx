@@ -1,99 +1,115 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { registerWithEmailAndPassword, signInWithGoogle } from "../services/auth";
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Lock, Mail, ShieldCheck, User } from "lucide-react";
 import LanguageToggle from "../components/LanguageToggle";
 import { useLanguage } from "../context/LanguageContext";
+import { registerWithEmailAndPassword, signInWithGoogle } from "../services/auth";
 
 export default function Signup() {
   const navigate = useNavigate();
-  const [form, setForm]         = useState({ name:"", email:"", password:"", confirm:"" });
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [gloading, setGloading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const { t } = useLanguage();
 
-  const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-
   const strength = form.password.length >= 8 ? "strong" : form.password.length >= 6 ? "medium" : form.password.length > 0 ? "weak" : "";
-  const strengthColor = { strong:"var(--green-400)", medium:"var(--amber-400)", weak:"var(--red-400)" }[strength];
-  const strengthWidth = { strong:"100%", medium:"60%", weak:"30%", "":"0%" }[strength];
+  const strengthColor = { strong: "var(--green-400)", medium: "var(--amber-400)", weak: "var(--red-400)" }[strength];
+  const strengthWidth = { strong: "100%", medium: "60%", weak: "30%", "": "0%" }[strength];
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const cleanError = (message) => (
+    message || "Account creation failed."
+  ).replace("Firebase: ", "").replace(/\(.*\)/, "").trim();
+
+  const onChange = (event) => {
+    setForm({ ...form, [event.target.name]: event.target.value });
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError("");
-    if (form.password !== form.confirm) { setError("Passwords do not match."); return; }
-    if (form.password.length < 6)       { setError("Password must be at least 6 characters."); return; }
+    if (form.password !== form.confirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (form.password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
     setLoading(true);
     try {
       await registerWithEmailAndPassword(form.email, form.password, form.name);
       navigate("/dashboard");
     } catch (err) {
-      setError(err.message.replace("Firebase: ", "").replace(/\(.*\)/, "").trim());
-    } finally { setLoading(false); }
+      setError(cleanError(err.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogle = async () => {
-    setError(""); setGloading(true);
+    setError("");
+    setGloading(true);
     try {
       await signInWithGoogle();
       navigate("/dashboard");
     } catch (err) {
-      setError(err.message.replace("Firebase: ", "").replace(/\(.*\)/, "").trim());
-    } finally { setGloading(false); }
+      setError(cleanError(err.message));
+    } finally {
+      setGloading(false);
+    }
   };
 
   return (
     <div className="auth-page">
-      <div className="orb orb-green" style={{ width:500,height:500,top:-100,right:-100,opacity:0.25 }} />
-      <div className="orb orb-blue"  style={{ width:300,height:300,bottom:0,left:0,opacity:0.2 }} />
-
-      <div style={{ position: "absolute", top: "1rem", right: "1rem", zIndex: 10 }}>
+      <div className="auth-language-shell">
         <LanguageToggle />
       </div>
 
-      <div className="auth-card anim-fadeup" style={{ position:"relative", zIndex:1 }}>
-        {/* Brand */}
-        <div style={{ textAlign:"center", marginBottom:"2rem" }}>
-          <div style={{ width:56,height:56,background:"linear-gradient(135deg,var(--green-600),var(--green-400))", borderRadius:"var(--radius-lg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.8rem", margin:"0 auto 1rem", boxShadow:"var(--shadow-green)" }}>
-            🐄
+      <div className="auth-card">
+        <div className="auth-brand-block">
+          <div className="auth-brand-mark">
+            <span>AI</span>
           </div>
-          <h1 style={{ fontSize:"1.5rem", marginBottom:"0.3rem" }}>
+          <h1 className="auth-title">
             {t("join")} <span className="gradient-text">LivestockAI</span>
           </h1>
-          <p style={{ fontSize:"0.875rem", color:"var(--slate-400)" }}>
-            {t("create_free_account")}
-          </p>
+          <p className="auth-subtitle">{t("create_free_account")}</p>
         </div>
 
-        {/* Google */}
         <button
           onClick={handleGoogle}
           disabled={gloading || loading}
           className="btn btn-ghost w-full"
-          style={{ marginBottom:"1.25rem", padding:"0.75rem", border:"1.5px solid var(--border)" }}
+          style={{ marginBottom: "1.25rem", padding: "0.75rem", border: "1.5px solid var(--border)" }}
         >
-          {gloading
-            ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> {t("signing_up")}</>
-            : <><span style={{ fontSize:"1.1rem" }}>🔐</span> {t("continue_google")}</>
-          }
+          {gloading ? (
+            <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> {t("signing_up")}</>
+          ) : (
+            <><ShieldCheck size={17} /> {t("continue_google")}</>
+          )}
         </button>
 
-        {/* Divider */}
-        <div style={{ display:"flex", alignItems:"center", gap:"0.75rem", marginBottom:"1.25rem" }}>
-          <div style={{ flex:1,height:1,background:"var(--border)" }} />
-          <span style={{ fontSize:"0.75rem", color:"var(--slate-500)" }}>{t("or_create_email")}</span>
-          <div style={{ flex:1,height:1,background:"var(--border)" }} />
+        <div className="auth-divider">
+          <div />
+          <span>{t("or_create_email")}</span>
+          <div />
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:"0.85rem" }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
           <div className="form-group">
             <label className="form-label">{t("full_name")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><User size={15} /></span>
-              <input className="input" type="text" name="name" placeholder="Your full name"
-                value={form.name} onChange={onChange} />
+              <input
+                className="input"
+                type="text"
+                name="name"
+                placeholder="Your full name"
+                value={form.name}
+                onChange={onChange}
+              />
             </div>
           </div>
 
@@ -101,8 +117,16 @@ export default function Signup() {
             <label className="form-label">{t("email_address")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><Mail size={15} /></span>
-              <input className="input" type="email" name="email" placeholder="you@example.com"
-                value={form.email} onChange={onChange} required autoComplete="email" />
+              <input
+                className="input"
+                type="email"
+                name="email"
+                placeholder="you@example.com"
+                value={form.email}
+                onChange={onChange}
+                required
+                autoComplete="email"
+              />
             </div>
           </div>
 
@@ -110,22 +134,32 @@ export default function Signup() {
             <label className="form-label">{t("password")}</label>
             <div className="input-icon-wrap">
               <span className="input-icon"><Lock size={15} /></span>
-              <input className="input" type={showPass ? "text" : "password"} name="password"
-                placeholder="Min. 6 characters" value={form.password} onChange={onChange}
-                required style={{ paddingRight:"2.5rem" }} />
-              <button type="button" onClick={() => setShowPass(!showPass)}
-                style={{ position:"absolute",right:"0.85rem",top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--slate-500)",cursor:"pointer",display:"flex" }}>
+              <input
+                className="input"
+                type={showPass ? "text" : "password"}
+                name="password"
+                placeholder="Min. 6 characters"
+                value={form.password}
+                onChange={onChange}
+                required
+                style={{ paddingRight: "2.5rem" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="input-eye-button"
+                aria-label={showPass ? "Hide password" : "Show password"}
+              >
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
-            {/* Strength bar */}
             {strength && (
-              <div style={{ marginTop:"0.35rem" }}>
-                <div style={{ height:3,background:"var(--bg-700)",borderRadius:"999px",overflow:"hidden" }}>
-                  <div style={{ height:"100%",width:strengthWidth,background:strengthColor,borderRadius:"999px",transition:"width 0.3s" }} />
+              <div style={{ marginTop: "0.35rem" }}>
+                <div style={{ height: 3, background: "var(--bg-700)", borderRadius: "999px", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: strengthWidth, background: strengthColor, borderRadius: "999px", transition: "width 0.3s" }} />
                 </div>
-                <span style={{ fontSize:"0.68rem",color:strengthColor,fontWeight:600,marginTop:"0.2rem",display:"block" }}>
-                  {strength.charAt(0).toUpperCase()+strength.slice(1)} password
+                <span style={{ fontSize: "0.68rem", color: strengthColor, fontWeight: 600, marginTop: "0.2rem", display: "block" }}>
+                  {strength.charAt(0).toUpperCase() + strength.slice(1)} password
                 </span>
               </div>
             )}
@@ -139,25 +173,37 @@ export default function Signup() {
                   ? <CheckCircle2 size={15} color="var(--green-400)" />
                   : <Lock size={15} />}
               </span>
-              <input className="input" type="password" name="confirm" placeholder="Repeat password"
-                value={form.confirm} onChange={onChange} required />
+              <input
+                className="input"
+                type="password"
+                name="confirm"
+                placeholder="Repeat password"
+                value={form.confirm}
+                onChange={onChange}
+                required
+              />
             </div>
           </div>
 
-          {error && <div className="alert alert-error">⚠️ {error}</div>}
+          {error && <div className="alert alert-error">Error: {error}</div>}
 
-          <button type="submit" className="btn btn-primary w-full"
-            disabled={loading} style={{ padding:"0.85rem", marginTop:"0.25rem" }}>
-            {loading
-              ? <><span className="spinner" style={{ width:16,height:16,borderWidth:2 }} /> {t("creating_account")}</>
-              : <>{t("create_account_btn")} <ArrowRight size={16} /></>
-            }
+          <button
+            type="submit"
+            className="btn btn-primary w-full"
+            disabled={loading}
+            style={{ padding: "0.85rem", marginTop: "0.25rem" }}
+          >
+            {loading ? (
+              <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> {t("creating_account")}</>
+            ) : (
+              <>{t("create_account_btn")} <ArrowRight size={16} /></>
+            )}
           </button>
         </form>
 
-        <div style={{ textAlign:"center", marginTop:"1.5rem", fontSize:"0.875rem", color:"var(--slate-400)" }}>
+        <div className="auth-footer-text">
           {t("already_have_account")}{" "}
-          <Link to="/login" style={{ color:"var(--green-400)", fontWeight:600 }}>{t("sign_in")} →</Link>
+          <Link to="/login">{t("sign_in")} -&gt;</Link>
         </div>
       </div>
     </div>

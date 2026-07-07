@@ -1,31 +1,49 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { logout } from "../services/auth";
 import LanguageToggle from "./LanguageToggle";
 import { useLanguage } from "../context/LanguageContext";
 import {
-  LayoutDashboard, Upload, History, LogOut, ChevronRight, Cpu, Shield, Map, Users, HeartPulse, ShoppingCart
+  Bell,
+  ChevronRight,
+  Cpu,
+  HeartPulse,
+  History,
+  LayoutDashboard,
+  LogOut,
+  Map,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Shield,
+  ShoppingCart,
+  Sun,
+  Upload,
+  Users,
 } from "lucide-react";
 
 const NAV = [
   { to: "/dashboard", icon: LayoutDashboard, label: "dashboard" },
-  { to: "/my-herd",    icon: Users,           label: "my_herd"    },
-  { to: "/clinic",     icon: HeartPulse,      label: "clinic"     },
-  { to: "/marketplace", icon: ShoppingCart,    label: "marketplace"},
-  { to: "/camera",     icon: Cpu,             label: "live_scanner" },
-  { to: "/upload",    icon: Upload,          label: "upload"   },
-  { to: "/history",   icon: History,         label: "history"   },
-  { to: "/map",       icon: Map,             label: "breed_map" },
+  { to: "/my-herd", icon: Users, label: "my_herd" },
+  { to: "/clinic", icon: HeartPulse, label: "clinic" },
+  { to: "/marketplace", icon: ShoppingCart, label: "marketplace" },
+  { to: "/camera", icon: Cpu, label: "live_scanner" },
+  { to: "/upload", icon: Upload, label: "upload" },
+  { to: "/history", icon: History, label: "history" },
+  { to: "/map", icon: Map, label: "breed_map" },
 ];
 
-
 export default function Sidebar() {
-  const location  = useLocation();
-  const navigate  = useNavigate();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [open, setOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
   const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -36,65 +54,73 @@ export default function Sidebar() {
     ? currentUser.displayName.charAt(0).toUpperCase()
     : currentUser?.email?.charAt(0).toUpperCase() || "U";
 
-  const name  = currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
+  const name = currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
   const email = currentUser?.email || "";
 
   return (
     <>
-      {/* Mobile overlay */}
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{
-            position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",
-            zIndex:99,display:"none"
-          }}
-          className="mobile-overlay"
-        />
-      )}
+      {open && <div onClick={() => setOpen(false)} className="mobile-overlay" />}
 
-      {/* Mobile toggle btn */}
       <button
         onClick={() => setOpen(!open)}
-        style={{
-          display:"none",
-          position:"fixed",top:"1rem",left:"1rem",zIndex:200,
-          background:"var(--bg-800)",border:"1px solid var(--border)",
-          borderRadius:"var(--radius-md)",padding:"0.5rem",color:"var(--white)"
-        }}
         className="sidebar-mobile-btn"
+        aria-label="Open navigation"
       >
-        ☰
+        <PanelLeftOpen size={19} />
       </button>
 
-      <aside className="sidebar">
-        {/* Brand */}
+      <aside className={`sidebar premium-sidebar${open ? " open" : ""}${collapsed ? " collapsed" : ""}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-logo">🐄</div>
+          <div className="sidebar-logo">AI</div>
           <div className="sidebar-brand-text">
             <h1>LivestockAI</h1>
-            <p>Smart Recognition</p>
+            <p>AI Command Center</p>
           </div>
+          <button
+            type="button"
+            className="sidebar-icon-btn"
+            onClick={() => setCollapsed((value) => !value)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
         </div>
 
-        <div style={{ padding: "1rem 1.5rem 0.5rem" }}>
+        <div className="sidebar-toolbar">
+          <button className="sidebar-tool" aria-label="Search">
+            <Search size={15} />
+            <span>Search</span>
+          </button>
+          <button className="sidebar-tool icon-only" aria-label="Notifications">
+            <Bell size={15} />
+          </button>
+          <button className="sidebar-tool icon-only" onClick={toggleTheme} aria-label="Toggle theme">
+            {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+        </div>
+
+        <div className="sidebar-language">
           <LanguageToggle />
         </div>
 
-
-        {/* Navigation */}
-        <nav className="sidebar-nav">
-          <div className="sidebar-label">Main Menu</div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          <div className="sidebar-label">Workspace</div>
           {NAV.map(({ to, icon: Icon, label }) => {
-            const active = location.pathname === to || location.pathname.startsWith(to + "/");
+            const active = location.pathname === to || location.pathname.startsWith(`${to}/`);
             return (
-              <Link key={to} to={to} className={`sidebar-link${active ? " active" : ""}`}>
+              <Link
+                key={to}
+                to={to}
+                className={`sidebar-link${active ? " active" : ""}`}
+                title={t(label)}
+                onClick={() => setOpen(false)}
+              >
                 <span className="sidebar-link-icon">
                   <Icon size={18} />
                 </span>
-                {t(label)}
+                <span className="sidebar-link-text">{t(label)}</span>
                 {active && (
-                  <span style={{ marginLeft: "auto" }}>
+                  <span className="sidebar-active-caret">
                     <ChevronRight size={14} />
                   </span>
                 )}
@@ -103,57 +129,42 @@ export default function Sidebar() {
           })}
 
           {currentUser?.role === "admin" && (
-            <Link 
-              to="/admin" 
+            <Link
+              to="/admin"
               className={`sidebar-link${location.pathname === "/admin" ? " active" : ""}`}
-              style={{ marginTop: "0.25rem" }}
+              title={t("admin_panel")}
+              onClick={() => setOpen(false)}
             >
               <span className="sidebar-link-icon">
                 <Shield size={18} />
               </span>
-              {t("admin_panel")}
+              <span className="sidebar-link-text">{t("admin_panel")}</span>
             </Link>
           )}
 
-
-          {/* AI Model info */}
-          <div style={{ marginTop: "auto", paddingTop: "1rem" }}>
-            <div
-              className="card card-green"
-              style={{ padding: "0.85rem", marginTop: "1rem" }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"0.35rem" }}>
-                <Cpu size={14} style={{ color:"var(--green-400)" }} />
-                <span style={{ fontSize:"0.75rem", fontWeight:700 }}>MobileNetV2</span>
-              </div>
-              <p style={{ fontSize:"0.68rem", color:"var(--slate-400)", lineHeight:1.5 }}>
-                94.2% accuracy · 5 breeds
-              </p>
-              <span className="badge badge-green" style={{ marginTop:"0.5rem", fontSize:"0.62rem" }}>
-                v1.0 Active
-              </span>
+          <div className="sidebar-model-card">
+            <div className="sidebar-model-title">
+              <Cpu size={15} />
+              <span>MobileNetV2</span>
             </div>
+            <p>94.2% accuracy · 5 breeds</p>
+            <span className="badge badge-green">v1.0 Active</span>
           </div>
         </nav>
 
-        {/* Bottom: user + logout */}
         <div className="sidebar-bottom">
           {currentUser && (
             <div className="sidebar-user">
               <div className="sidebar-avatar">{initials}</div>
-              <div style={{ minWidth:0, flex:1 }}>
-                <div className="sidebar-user-name" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                  {name}
-                </div>
-                <div className="sidebar-user-email" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                  {email}
-                </div>
+              <div className="sidebar-user-copy">
+                <div className="sidebar-user-name">{name}</div>
+                <div className="sidebar-user-email">{email}</div>
               </div>
             </div>
           )}
           <button onClick={handleLogout} className="sidebar-logout">
             <LogOut size={16} />
-            {t("logout")}
+            <span>{t("logout")}</span>
           </button>
         </div>
       </aside>

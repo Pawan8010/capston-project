@@ -1,29 +1,21 @@
 import React from "react";
-import { useLanguage } from "../context/LanguageContext";
 import { Globe } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 const LanguageToggle = () => {
   const { language, setLanguage } = useLanguage();
 
-  const handleLanguageChange = (e) => {
-    setLanguage(e.target.value);
-  };
-
   return (
-    <div className="flex items-center gap-2">
-      <Globe className="w-4 h-4 text-[var(--text-color)]" />
+    <div className="premium-language-toggle">
+      <Globe size={18} aria-hidden="true" />
       <select
         value={language}
-        onChange={handleLanguageChange}
-        className="bg-transparent text-[var(--text-color)] text-sm font-medium border-none outline-none cursor-pointer p-1"
-        style={{
-          backgroundColor: "var(--bg-secondary)",
-          borderRadius: "4px"
-        }}
+        onChange={(event) => setLanguage(event.target.value)}
+        aria-label="Select language"
       >
-        <option value="en" className="text-black dark:text-white bg-white dark:bg-gray-800">English</option>
-        <option value="hi" className="text-black dark:text-white bg-white dark:bg-gray-800">हिंदी</option>
-        <option value="mr" className="text-black dark:text-white bg-white dark:bg-gray-800">मराठी</option>
+        <option value="en">English</option>
+        <option value="hi">{"\u0939\u093f\u0902\u0926\u0940"}</option>
+        <option value="mr">{"\u092e\u0930\u093e\u0920\u0940"}</option>
       </select>
     </div>
   );

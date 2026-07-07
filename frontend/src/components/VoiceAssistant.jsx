@@ -60,6 +60,10 @@ export default function VoiceAssistant({ breedContext = null }) {
         language,
         breed: breedContext?.primary_breed || null,
         confidence: breedContext?.confidence || null,
+        history: history.flatMap((item) => [
+          { role: "user", content: item.q },
+          { role: "assistant", content: item.a },
+        ]).slice(-10),
       };
       const data = await voiceQuery(payload);
       setResponse(data.response);
@@ -73,7 +77,7 @@ export default function VoiceAssistant({ breedContext = null }) {
     } finally {
       setLoading(false);
     }
-  }, [language, breedContext, speak]);
+  }, [language, breedContext, history, speak]);
 
   /* ── Speech recognition setup ────────────────────────────────────────── */
   const startListening = useCallback(() => {

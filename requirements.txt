@@ -4,7 +4,12 @@ fastapi
 uvicorn
 motor
 firebase-admin
-tensorflow
+tensorflow; python_version < "3.13"
 Pillow
 numpy
 python-dotenv
+pydantic-settings
+opencv-python-headless
+openai
+pytest
+httpx

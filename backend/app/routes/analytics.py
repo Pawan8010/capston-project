@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
-from app.services.mongo_service import db
+from app.config import db
 from app.security import verify_token
+from app.services.mongo_service import get_user_predictions
 from datetime import datetime, timedelta
 
 router = APIRouter()
@@ -8,41 +9,49 @@ router = APIRouter()
 @router.get("/user")
 async def get_user_analytics(user: dict = Depends(verify_token)):
     uid = user["uid"]
-    
-    # 1. Total Scans
-    total_scans = await db.predictions.count_documents({"user_id": uid})
-    
-    # 2. Breed distribution
-    pipeline_breed = [
-        {"$match": {"user_id": uid}},
-        {"$group": {"_id": "$primary_breed", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
-    ]
-    cursor_breed = db.predictions.aggregate(pipeline_breed)
+
+    predictions = await get_user_predictions(uid, limit=500)
+    total_scans = len(predictions)
+
     breed_distribution = {}
-    async for doc in cursor_breed:
-        if doc["_id"]:
-            breed_distribution[doc["_id"]] = doc["count"]
-            
-    # 3. Scans per day (last 30 days)
+    scans_by_date = {}
+    confidence_values = []
+    realtime_count = 0
+    upload_count = 0
+
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-    pipeline_dates = [
-        {"$match": {"user_id": uid, "timestamp": {"$gte": thirty_days_ago}}},
-        {"$group": {
-            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$timestamp"}},
-            "count": {"$sum": 1}
-        }},
-        {"$sort": {"_id": 1}}
-    ]
-    cursor_dates = db.predictions.aggregate(pipeline_dates)
-    scans_per_day = []
-    async for doc in cursor_dates:
-        scans_per_day.append({"date": doc["_id"], "count": doc["count"]})
-        
+
+    for prediction in predictions:
+        breed = prediction.get("primary_breed")
+        if breed:
+            breed_distribution[breed] = breed_distribution.get(breed, 0) + 1
+
+        source = prediction.get("source") or "upload"
+        if source == "realtime":
+            realtime_count += 1
+        else:
+            upload_count += 1
+
+        confidence = prediction.get("confidence")
+        if confidence is not None:
+            confidence_values.append(confidence if confidence <= 1 else confidence / 100)
+
+        timestamp = prediction.get("timestamp")
+        if isinstance(timestamp, datetime) and timestamp >= thirty_days_ago:
+            key = timestamp.strftime("%Y-%m-%d")
+            scans_by_date[key] = scans_by_date.get(key, 0) + 1
+
+    scans_per_day = [{"date": date, "count": count} for date, count in sorted(scans_by_date.items())]
+    average_confidence = round(sum(confidence_values) / len(confidence_values), 4) if confidence_values else 0
+
     return {
         "total_scans": total_scans,
         "breed_distribution": breed_distribution,
-        "scans_per_day": scans_per_day
+        "scans_per_day": scans_per_day,
+        "average_confidence": average_confidence,
+        "realtime_count": realtime_count,
+        "upload_count": upload_count,
+        "latest_predictions": predictions[:6],
     }
 
 @router.get("/admin")

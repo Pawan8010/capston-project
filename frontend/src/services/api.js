@@ -44,8 +44,10 @@ export const predictBreed = async (imageFile) => {
  * Send a base64 image frame for real-time prediction
  * @param {string} imageB64 - base64 data URI (data:image/jpeg;base64,...)
  */
-export const realtimePredict = async (imageB64) => {
-  const response = await api.post("/api/realtime-predict/", { image_b64: imageB64 });
+export const realtimePredict = async (imageB64, options = {}) => {
+  const response = await api.post("/api/realtime-predict/", { image_b64: imageB64 }, {
+    params: options.save ? { save: true } : undefined,
+  });
   return response.data;
 };
 

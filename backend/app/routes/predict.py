@@ -4,11 +4,12 @@ Accepts a livestock image and returns breed prediction results.
 """
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from app.services.ml_service import get_predictor, BreedPredictor
+from app.services.ml_service import get_predictor, BreedPredictor, ModelUnavailableError
 from app.services.mongo_service import save_prediction
 from app.security import verify_token
 from app.utils.image_quality import check_image_sharpness
 from app.services.breed_info import get_breed_info
+import time
 
 router = APIRouter()
 
@@ -44,13 +45,19 @@ async def predict(
             }
         )
 
-    result = predictor.predict(contents)
+    start = time.perf_counter()
+    try:
+        result = predictor.predict(contents)
+    except ModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    inference_ms = round((time.perf_counter() - start) * 1000, 2)
     # Add filename back if frontend needs it
     result["filename"] = file.filename
     
     # Step 6: Add breed info
     breed_info = get_breed_info(result.get("primary_breed", ""))
     result["breed_info"] = breed_info
+    result["inference_ms"] = inference_ms
 
     doc = {
         "user_id": user["uid"],
@@ -60,12 +67,13 @@ async def predict(
         "confidence": result.get("confidence"),
         "crossbreed_ratio": result.get("crossbreed_ratio"),
         "all_probabilities": result.get("all_probabilities"),
+        "all_predictions": result.get("all_predictions"),
         "breed_info": breed_info,
         "health_status": "Healthy", # Will be updated later
         "health_issue": None,
         "latitude": None,
         "longitude": None,
-        "inference_ms": 0.0 # Can be calculated later
+        "inference_ms": inference_ms
     }
     
     inserted_id = await save_prediction(doc)

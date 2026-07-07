@@ -4,7 +4,21 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
 import { logout } from "../services/auth";
-import { Menu, X, Sun, Moon, LayoutDashboard, Camera, History, Users, HeartPulse, ShoppingCart, Home as HomeIcon } from "lucide-react";
+import {
+  BarChart3,
+  Camera,
+  CheckCircle2,
+  History,
+  Home as HomeIcon,
+  LayoutDashboard,
+  Menu,
+  Moon,
+  ScanLine,
+  Sparkles,
+  Sun,
+  Upload,
+  X,
+} from "lucide-react";
 import LanguageToggle from "./LanguageToggle";
 
 export default function Navbar() {
@@ -16,16 +30,25 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
 
-  const links = [
-    { to: "/",          label: t("home"),        icon: <HomeIcon size={18} /> },
-    { to: "/dashboard", label: t("dashboard"),   icon: <LayoutDashboard size={18} /> },
-    { to: "/my-herd",   label: t("my_herd"),    icon: <Users size={18} /> },
-    { to: "/clinic",    label: t("clinic"),     icon: <HeartPulse size={18} /> },
-    { to: "/marketplace", label: t("marketplace"), icon: <ShoppingCart size={18} /> },
+  const publicLinks = [
+    { to: "/", label: t("home"), icon: <HomeIcon size={17} /> },
+    { to: "/camera", label: "Live Scanner", icon: <Camera size={17} /> },
+    { to: "/login", label: "Demo", icon: <Sparkles size={17} /> },
   ];
+
+  const authedLinks = [
+    { to: "/dashboard", label: t("dashboard"), icon: <LayoutDashboard size={17} /> },
+    { to: "/camera", label: t("live_scanner"), icon: <ScanLine size={17} /> },
+    { to: "/upload", label: t("upload"), icon: <Upload size={17} /> },
+    { to: "/history", label: t("history"), icon: <History size={17} /> },
+  ];
+
+  const links = currentUser ? authedLinks : publicLinks;
 
   const handleLogout = async () => {
     await logout();
+    setDropOpen(false);
+    setMenuOpen(false);
     navigate("/login");
   };
 
@@ -33,113 +56,140 @@ export default function Navbar() {
     ? currentUser.displayName.charAt(0).toUpperCase()
     : currentUser?.email?.charAt(0).toUpperCase() || "U";
 
+  const closeMenus = () => {
+    setMenuOpen(false);
+    setDropOpen(false);
+  };
+
   return (
-    <div className="nav-wrapper">
-      <nav className="nav">
-        <div className="nav-inner">
-          {/* Brand */}
-          <Link to="/" className="nav-brand">
-            <div className="logo-badge">🐄</div>
-            <span style={{ fontFamily: "'Poppins',sans-serif", fontWeight: 700, fontSize: "1rem" }}>
-              Livestock<span className="gradient-text">AI</span>
-            </span>
+    <div className="nav-wrapper premium-nav-wrapper">
+      <nav className="nav premium-nav" aria-label="Primary navigation">
+        <div className="nav-inner premium-nav-inner">
+          <Link to={currentUser ? "/dashboard" : "/"} className="nav-brand premium-nav-brand" onClick={closeMenus}>
+            <div className="logo-badge premium-logo-badge">
+              <span>AI</span>
+            </div>
+            <div className="premium-brand-copy">
+              <span className="premium-brand-title">Livestock<span className="gradient-text">AI</span></span>
+              <span className="premium-brand-subtitle">Breed intelligence</span>
+            </div>
           </Link>
 
-          {/* Desktop Links */}
-          <div className="nav-links" style={{ display: "flex" }}>
-            {links.map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                className={`nav-link${location.pathname === l.to ? " active" : ""}`}
-                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-              >
-                {l.icon}
-                <span>{l.label}</span>
-              </Link>
-            ))}
+          <div className="nav-links premium-nav-links">
+            {links.map((link) => {
+              const active = location.pathname === link.to;
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`nav-link premium-nav-link${active ? " active" : ""}`}
+                  onClick={closeMenus}
+                >
+                  {link.icon}
+                  <span>{link.label}</span>
+                </Link>
+              );
+            })}
           </div>
 
-          {/* Actions */}
-          <div className="nav-actions">
+          <div className="premium-nav-info">
+            <span className="premium-info-dot" />
+            <span>5 breeds</span>
+            <strong>Realtime AI</strong>
+          </div>
+
+          <div className="nav-actions premium-nav-actions">
             <button
-              className="theme-toggle"
+              className="theme-toggle premium-icon-action"
               onClick={toggleTheme}
               aria-label="Toggle theme"
               title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
               {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-              <span className="theme-toggle-label">
-                {theme === "dark" ? "Light" : "Dark"}
-              </span>
             </button>
 
-            <LanguageToggle />
+            <div className="premium-language-wrap">
+              <LanguageToggle />
+            </div>
 
             {currentUser ? (
-              <div style={{ position: "relative" }}>
-                <div
-                  className="nav-avatar"
-                  onClick={() => setDropOpen(!dropOpen)}
+              <div className="premium-profile-wrap">
+                <button
+                  className="nav-avatar premium-nav-avatar"
+                  onClick={() => setDropOpen((value) => !value)}
                   title={currentUser.email}
+                  aria-label="Open profile menu"
                 >
                   {initials}
-                </div>
+                </button>
                 {dropOpen && (
                   <>
-                    <div
-                      style={{ position: "fixed", inset: 0, zIndex: 100 }}
-                      onClick={() => setDropOpen(false)}
-                    />
-                    <div style={{
-                      position: "absolute", right: 0, top: "calc(100% + 8px)",
-                      background: "var(--bg-700)", border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-md)", padding: "0.5rem",
-                      minWidth: 200, zIndex: 200, boxShadow: "var(--shadow-lg)",
-                    }}>
-                      <div style={{ padding: "0.5rem 0.75rem 0.75rem", borderBottom: "1px solid var(--border)", marginBottom: "0.25rem" }}>
-                        <div style={{ fontSize: "0.8rem", fontWeight: 600 }}>
-                          {currentUser.displayName || "User"}
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--slate-500)" }}>
-                          {currentUser.email}
+                    <div className="premium-menu-backdrop" onClick={() => setDropOpen(false)} />
+                    <div className="premium-profile-menu">
+                      <div className="premium-profile-head">
+                        <div className="premium-profile-avatar">{initials}</div>
+                        <div>
+                          <div className="premium-profile-name">{currentUser.displayName || "Demo Farmer"}</div>
+                          <div className="premium-profile-email">{currentUser.email || "demo@livestock.ai"}</div>
                         </div>
                       </div>
-                      <Link
-                        to="/dashboard"
-                        className="sidebar-link"
-                        onClick={() => setDropOpen(false)}
-                        style={{ borderRadius: "var(--radius-sm)" }}
-                      >
-                        📊 Dashboard
+                      <Link to="/dashboard" className="premium-menu-item" onClick={closeMenus}>
+                        <BarChart3 size={16} /> Dashboard
                       </Link>
-                      <Link
-                        to="/upload"
-                        className="sidebar-link"
-                        onClick={() => setDropOpen(false)}
-                        style={{ borderRadius: "var(--radius-sm)" }}
-                      >
-                        🔬 Analyse
+                      <Link to="/camera" className="premium-menu-item" onClick={closeMenus}>
+                        <Camera size={16} /> Realtime scanner
                       </Link>
-                      <button
-                        onClick={handleLogout}
-                        className="sidebar-link"
-                        style={{ color: "var(--red-400)", width: "100%", borderRadius: "var(--radius-sm)" }}
-                      >
-                        🚪 Sign Out
+                      <button onClick={handleLogout} className="premium-menu-item danger">
+                        <X size={16} /> Sign out
                       </button>
                     </div>
                   </>
                 )}
               </div>
             ) : (
-              <>
-                <Link to="/login"  className="btn btn-ghost btn-sm" style={{ borderRadius: "999px" }}>Sign In</Link>
-                <Link to="/signup" className="btn btn-primary btn-sm btn-glow" style={{ borderRadius: "999px" }}>Get Started</Link>
-              </>
+              <div className="premium-auth-actions">
+                <Link to="/login" className="btn btn-ghost btn-sm">Sign In</Link>
+                <Link to="/signup" className="btn btn-primary btn-sm">Get Started</Link>
+              </div>
             )}
+
+            <button
+              className="premium-mobile-toggle"
+              onClick={() => setMenuOpen((value) => !value)}
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
         </div>
+
+        {menuOpen && (
+          <div className="premium-mobile-menu">
+            <div className="premium-mobile-info">
+              <CheckCircle2 size={16} />
+              <span>AI model ready · 5 cattle breeds · realtime scan</span>
+            </div>
+            {links.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={`premium-mobile-link${location.pathname === link.to ? " active" : ""}`}
+                onClick={closeMenus}
+              >
+                {link.icon}
+                <span>{link.label}</span>
+              </Link>
+            ))}
+            {!currentUser ? (
+              <div className="premium-mobile-actions">
+                <Link to="/login" className="btn btn-ghost w-full" onClick={closeMenus}>Sign In</Link>
+                <Link to="/signup" className="btn btn-primary w-full" onClick={closeMenus}>Get Started</Link>
+              </div>
+            ) : (
+              <button onClick={handleLogout} className="btn btn-danger w-full">Sign Out</button>
+            )}
+          </div>
+        )}
       </nav>
     </div>
   );

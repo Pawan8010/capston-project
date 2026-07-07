@@ -5,13 +5,13 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB1X_C6BJZaIi6EKw9kPuzUXSd_RC4P3Jg",
-  authDomain: "finalyearproject-ad6e9.firebaseapp.com",
-  projectId: "finalyearproject-ad6e9",
-  storageBucket: "finalyearproject-ad6e9.firebasestorage.app",
-  messagingSenderId: "920459289067",
-  appId: "1:920459289067:web:79be2d94878112023d39ae",
-  measurementId: "G-MDK6D139VY",
+  apiKey: "AIzaSyCSJwQo56etpdDXPgoYfSgM6DoqKRlai-0",
+  authDomain: "capston-44fda.firebaseapp.com",
+  projectId: "capston-44fda",
+  storageBucket: "capston-44fda.firebasestorage.app",
+  messagingSenderId: "1097273700890",
+  appId: "1:1097273700890:web:be44a778ba269404dcd7a3",
+  measurementId: "G-G003PWE10H",
 };
 
 // Initialize Firebase

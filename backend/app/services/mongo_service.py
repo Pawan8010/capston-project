@@ -1,6 +1,24 @@
 from app.config import db
 from datetime import datetime, timedelta
-from bson import ObjectId
+try:
+    from bson import ObjectId
+except ImportError:
+    from uuid import uuid4
+
+    def ObjectId(id=None):
+        return id or str(uuid4())
+
+try:
+    from pymongo.errors import PyMongoError, ServerSelectionTimeoutError
+except ImportError:
+    class PyMongoError(Exception):
+        pass
+
+    class ServerSelectionTimeoutError(PyMongoError):
+        pass
+
+_memory_predictions = []
+_memory_users = {}
 
 async def save_prediction(doc: dict) -> str:
     """
@@ -10,8 +28,14 @@ async def save_prediction(doc: dict) -> str:
     """
     doc["timestamp"]     = datetime.utcnow()
     doc["feedback_given"] = False
-    result = await db.predictions.insert_one(doc)
-    return str(result.inserted_id)
+    try:
+        result = await db.predictions.insert_one(doc)
+        return str(result.inserted_id)
+    except (PyMongoError, ServerSelectionTimeoutError):
+        inserted_id = str(ObjectId())
+        local_doc = {**doc, "_id": inserted_id}
+        _memory_predictions.append(local_doc)
+        return inserted_id
 
 async def get_user_predictions(
     user_id: str,
@@ -31,25 +55,42 @@ async def get_user_predictions(
         query["timestamp"] = {
             "$gte": datetime.fromisoformat(from_date)
         }
-    cursor = db.predictions.find(
-        query,
-        {"_id": 1, "primary_breed": 1, "secondary_breed": 1,
-         "confidence": 1, "image_url": 1, "timestamp": 1,
-         "crossbreed_ratio": 1, "health_status": 1}
-    ).sort("timestamp", -1).limit(limit)
-    docs = await cursor.to_list(length=limit)
-    for d in docs:
-        d["_id"] = str(d["_id"])
-    return docs
+    try:
+        cursor = db.predictions.find(
+            query,
+            {"_id": 1, "primary_breed": 1, "secondary_breed": 1,
+             "confidence": 1, "image_url": 1, "timestamp": 1,
+             "crossbreed_ratio": 1, "health_status": 1, "source": 1,
+             "latitude": 1, "longitude": 1, "inference_ms": 1}
+        ).sort("timestamp", -1).limit(limit)
+        docs = await cursor.to_list(length=limit)
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        return docs
+    except (PyMongoError, ServerSelectionTimeoutError):
+        docs = [doc for doc in _memory_predictions if doc.get("user_id") == user_id]
+        if breed_filter:
+            docs = [doc for doc in docs if doc.get("primary_breed") == breed_filter]
+        if from_date:
+            start = datetime.fromisoformat(from_date)
+            docs = [doc for doc in docs if doc.get("timestamp") >= start]
+        docs = sorted(docs, key=lambda doc: doc.get("timestamp"), reverse=True)[:limit]
+        return [{**doc, "_id": str(doc["_id"])} for doc in docs]
 
 async def upsert_user(data: dict):
     # Set default role to farmer unless they are a predefined admin
     if "role" not in data:
         data["role"] = "admin" if data.get("email") == "admin@example.com" else "farmer"
-    await db.users.update_one({"uid": data["uid"]}, {"$set": data}, upsert=True)
+    try:
+        await db.users.update_one({"uid": data["uid"]}, {"$set": data}, upsert=True)
+    except (PyMongoError, ServerSelectionTimeoutError):
+        _memory_users[data["uid"]] = data
 
 async def get_user_role(uid: str):
-    user = await db.users.find_one({"uid": uid}, {"role": 1})
+    try:
+        user = await db.users.find_one({"uid": uid}, {"role": 1})
+    except (PyMongoError, ServerSelectionTimeoutError):
+        user = _memory_users.get(uid)
     return user.get("role", "farmer") if user else "farmer"
 
 async def get_admin_stats():
@@ -58,7 +99,7 @@ async def get_admin_stats():
     return {"total_users": total_users, "total_predictions": total_predictions}
 
 async def delete_prediction(id: str, uid: str):
-    await db.predictions.delete_one({"_id": ObjectId(id), "uid": uid})
+    await db.predictions.delete_one({"_id": ObjectId(id), "user_id": uid})
 
 
 # ── New analytics queries ───────────────────────────────────────────────────

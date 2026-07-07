@@ -1,23 +1,38 @@
-/**
- * CameraPage.jsx  —  /camera
- * Full-page real-time livestock breed scanner using webcam.
- * Integrates CameraScanner component with VoiceAssistant context passing.
- */
-
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import CameraScanner from "../components/CameraScanner";
 import VoiceAssistant from "../components/VoiceAssistant";
-import { useNavigate } from "react-router-dom";
-import { Camera, Upload, Info } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
+import {
+  Activity,
+  ArrowRight,
+  Camera,
+  CheckCircle2,
+  Clock3,
+  FileScan,
+  Gauge,
+  Info,
+  Radio,
+  Upload,
+} from "lucide-react";
+
+const normalizeConfidence = (value = 0) => (value > 1 ? value / 100 : value);
+const percent = (value = 0) => Math.round(normalizeConfidence(value) * 100);
 
 export default function CameraPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [lastPrediction, setLastPrediction] = useState(null);
-  const [capturedImage,  setCapturedImage]  = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [telemetry, setTelemetry] = useState({
+    active: false,
+    scanning: false,
+    frameCount: 0,
+    latencyMs: 0,
+    scanRate: 0,
+    lastScanAt: null,
+  });
 
   const handleCapture = (result, b64) => {
     setLastPrediction(result);
@@ -29,135 +44,152 @@ export default function CameraPage() {
     navigate("/result", { state: { result: lastPrediction, previewUrl: capturedImage } });
   };
 
-  return (
-    <div className="app-layout">
-      <Sidebar />
-      <div className="main-content">
+  const statusItems = useMemo(() => ([
+    {
+      label: "Stream",
+      value: telemetry.active ? "Online" : "Idle",
+      icon: Radio,
+      tone: telemetry.active ? "ok" : "muted",
+    },
+    {
+      label: "Loop",
+      value: telemetry.scanning ? "Scanning" : "Ready",
+      icon: Activity,
+      tone: telemetry.scanning ? "blue" : "ok",
+    },
+    {
+      label: "Latency",
+      value: telemetry.latencyMs ? `${telemetry.latencyMs} ms` : "--",
+      icon: Gauge,
+      tone: "blue",
+    },
+    {
+      label: "Frames",
+      value: telemetry.frameCount,
+      icon: FileScan,
+      tone: "muted",
+    },
+  ]), [telemetry]);
 
-        {/* Header */}
-        <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+  const artifacts = [
+    { title: "Frame capture", state: telemetry.frameCount > 0 ? "Generated" : "Waiting", icon: Camera },
+    { title: "Breed probabilities", state: lastPrediction ? "Verified" : "Waiting", icon: CheckCircle2 },
+    { title: "Result report", state: lastPrediction ? "Ready" : "Pending", icon: Info },
+  ];
+
+  return (
+    <div className="app-layout ag-workspace">
+      <Sidebar />
+      <main className="main-content ag-main">
+        <section className="ag-command-header">
           <div>
-            <div className="breadcrumb">
-              <Link to="/dashboard" className="breadcrumb-link" style={{ color: "var(--slate-500)", fontSize: "0.82rem" }}>{t("dashboard")}</Link>
-              <span className="breadcrumb-sep">/</span>
-              <span style={{ color: "var(--green-400)", fontSize: "0.82rem", fontWeight: 600 }}>{t("live_scanner")}</span>
+            <div className="breadcrumb ag-breadcrumb">
+              <Link to="/dashboard">{t("dashboard")}</Link>
+              <span>/</span>
+              <span>{t("live_scanner")}</span>
             </div>
-            <h2 style={{ fontSize: "1.6rem", marginBottom: "0.3rem" }}>
-              📷 {t("live_scanner")}
-            </h2>
-            <p style={{ fontSize: "0.875rem", color: "var(--slate-400)" }}>
-              {t("camera_desc")}
-            </p>
+            <h2>Livestock Agent Manager</h2>
+            <p>{t("camera_desc")}</p>
           </div>
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <Link to="/upload" className="btn btn-outline">
+          <div className="ag-header-actions">
+            <Link to="/upload" className="btn btn-ghost">
               <Upload size={16} /> {t("upload_instead")}
             </Link>
-            {lastPrediction && (
-              <button className="btn btn-primary" onClick={handleViewResult}>
-                <Info size={16} /> {t("view_full_result")}
-              </button>
-            )}
+            <button className="btn btn-primary" onClick={handleViewResult} disabled={!lastPrediction}>
+              <Info size={16} /> {t("view_full_result")}
+            </button>
           </div>
-        </div>
+        </section>
 
-        {/* Main grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "1.5rem" }}>
+        <section className="ag-status-grid">
+          {statusItems.map(({ label, value, icon: Icon, tone }) => (
+            <div key={label} className={`ag-status-tile ag-tone-${tone}`}>
+              <Icon size={18} />
+              <div>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            </div>
+          ))}
+        </section>
 
-          {/* Camera Scanner */}
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <Camera size={16} style={{ color: "var(--green-400)" }} />
-              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t("live_feed")}</span>
-              <span className="badge badge-green" style={{ marginLeft: "auto", fontSize: "0.65rem" }}>
-                {t("ai_active")}
+        <section className="ag-live-layout">
+          <div className="ag-primary-panel">
+            <div className="ag-panel-bar">
+              <div>
+                <span className="ag-kicker">Realtime Workspace</span>
+                <h3>Camera Stream</h3>
+              </div>
+              <span className={`ag-status-pill ${telemetry.active ? "is-online" : ""}`}>
+                <span /> {telemetry.active ? "Live" : "Standby"}
               </span>
             </div>
-            <div style={{ padding: "1.25rem" }}>
-              <CameraScanner onCapture={handleCapture} />
-            </div>
+            <CameraScanner
+              onCapture={handleCapture}
+              onTelemetry={(next) => setTelemetry((prev) => ({ ...prev, ...next }))}
+            />
           </div>
 
-          {/* Right panel */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-
-            {/* Last prediction summary */}
-            {lastPrediction ? (
-              <div className="card card-green">
-                <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--green-400)", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  {t("latest_detection")}
-                </div>
-                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🐄</div>
-                <div style={{ fontWeight: 800, fontSize: "1.3rem", marginBottom: "0.25rem" }}>
-                  {lastPrediction.primary_breed?.replace("_", " ")}
-                </div>
-                <div style={{ fontSize: "0.85rem", color: "var(--slate-400)", marginBottom: "0.75rem" }}>
-                  {t("confidence")}: <strong style={{ color: "var(--green-400)" }}>
-                    {Math.round((lastPrediction.confidence || 0) * 100)}%
-                  </strong>
-                </div>
-                {lastPrediction.secondary_breed && (
-                  <div style={{ fontSize: "0.78rem", color: "var(--slate-500)", marginBottom: "0.75rem" }}>
-                    {t("secondary")}: {lastPrediction.secondary_breed.replace("_", " ")}
+          <aside className="ag-side-stack">
+            <div className="ag-side-panel ag-result-panel">
+              <div className="ag-panel-title">Latest Detection</div>
+              {lastPrediction ? (
+                <>
+                  <div className="ag-result-breed">{lastPrediction.primary_breed?.replace("_", " ")}</div>
+                  <div className="ag-result-meta">
+                    <span>{percent(lastPrediction.confidence)}% confidence</span>
+                    <span>{lastPrediction.model_mode || "model"}</span>
                   </div>
-                )}
-                <button className="btn btn-primary btn-sm w-full" onClick={handleViewResult}>
-                  <Info size={14} /> {t("view_full_details")}
-                </button>
-              </div>
-            ) : (
-              <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
-                <div style={{ fontSize: "3rem", marginBottom: "0.75rem" }}>🔭</div>
-                <p style={{ color: "var(--slate-400)", fontSize: "0.875rem" }}>
-                  {t("start_camera_to_see")}
-                </p>
-              </div>
-            )}
+                  <div className="progress-wrap ag-result-progress">
+                    <div className="progress-bar" style={{ width: `${percent(lastPrediction.confidence)}%` }} />
+                  </div>
+                  {lastPrediction.secondary_breed && (
+                    <p className="ag-muted">Secondary signal: {lastPrediction.secondary_breed.replace("_", " ")}</p>
+                  )}
+                  <button className="btn btn-primary w-full" onClick={handleViewResult}>
+                    Open Report <ArrowRight size={15} />
+                  </button>
+                </>
+              ) : (
+                <div className="ag-empty-state">
+                  <Clock3 size={28} />
+                  <p>{t("start_camera_to_see")}</p>
+                </div>
+              )}
+            </div>
 
-            {/* How it works */}
-            <div className="card">
-              <div style={{ fontWeight: 700, fontSize: "0.875rem", marginBottom: "0.85rem" }}>
-                📖 {t("how_it_works")}
+            <div className="ag-side-panel">
+              <div className="ag-panel-title">Artifacts</div>
+              <div className="ag-artifact-list">
+                {artifacts.map(({ title, state, icon: Icon }) => (
+                  <div key={title} className="ag-artifact-row">
+                    <Icon size={16} />
+                    <div>
+                      <strong>{title}</strong>
+                      <span>{state}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
+            </div>
+
+            <div className="ag-side-panel">
+              <div className="ag-panel-title">Scanner Plan</div>
               {[
-                { step: "1", text: t("how_step1") },
-                { step: "2", text: t("how_step2") },
-                { step: "3", text: t("how_step3") },
-                { step: "4", text: t("how_step4") },
-              ].map(({ step, text }) => (
-                <div key={step} style={{ display: "flex", gap: "0.75rem", marginBottom: "0.65rem", alignItems: "flex-start" }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: "50%",
-                    background: "var(--green-900)", color: "var(--green-400)",
-                    fontSize: "0.7rem", fontWeight: 700,
-                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-                  }}>
-                    {step}
-                  </div>
-                  <span style={{ fontSize: "0.82rem", color: "var(--slate-300)", lineHeight: 1.5 }}>{text}</span>
+                "Open camera stream",
+                "Capture frames continuously",
+                "Run backend prediction",
+                "Create result artifact",
+              ].map((step, index) => (
+                <div key={step} className="ag-plan-row">
+                  <span>{index + 1}</span>
+                  <p>{step}</p>
                 </div>
               ))}
             </div>
-
-            {/* Tips */}
-            <div className="card card-amber">
-              <div style={{ fontWeight: 700, fontSize: "0.875rem", marginBottom: "0.75rem" }}>💡 {t("tips_best_results")}</div>
-              {[
-                t("tip1"),
-                t("tip2"),
-                t("tip3"),
-                t("tip4"),
-              ].map((tip) => (
-                <div key={tip} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.78rem", color: "var(--slate-300)" }}>
-                  <span>✓</span> <span>{tip}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Floating Voice Assistant — context-aware with latest prediction */}
+          </aside>
+        </section>
+      </main>
       <VoiceAssistant breedContext={lastPrediction} />
     </div>
   );

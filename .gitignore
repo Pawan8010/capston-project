@@ -3,7 +3,9 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+backend/.env
 *.h5
+*.keras
 *.egg-info/
 dist/
 build/
@@ -11,5 +13,10 @@ build/
 storage/uploads/*
 !storage/uploads/.gitkeep
 firebase-adminsdk.json
+backend/firebase-adminsdk.json
+*firebase-adminsdk*.json
+ml-service/data/*
+!ml-service/data/.gitignore
+!ml-service/data/dataset_manifest.csv
 *.log
 .DS_Store

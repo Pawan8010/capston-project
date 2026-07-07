@@ -60,4 +60,5 @@ def get_breed_info(breed_name: str) -> dict:
     Returns known information about a breed.
     Returns an empty dict if breed is not in the database.
     """
-    return BREED_INFO.get(breed_name, {})
+    normalized = breed_name.replace("_", " ")
+    return BREED_INFO.get(breed_name) or BREED_INFO.get(normalized, {})

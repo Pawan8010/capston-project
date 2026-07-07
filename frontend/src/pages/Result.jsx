@@ -15,9 +15,10 @@ const BREED_INFO = {
 };
 
 function ConfidenceRing({ value, size = 140, t }) {
+  const normalized = value > 1 ? value / 100 : value;
   const r    = (size - 16) / 2;
   const circ = 2 * Math.PI * r;
-  const dash = circ * value;
+  const dash = circ * normalized;
   return (
     <div className="ring-wrapper" style={{ width:size, height:size }}>
       <svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}>
@@ -36,7 +37,7 @@ function ConfidenceRing({ value, size = 140, t }) {
         </defs>
       </svg>
       <div className="ring-text">
-        <div className="ring-pct">{Math.round(value * 100)}%</div>
+        <div className="ring-pct">{Math.round(normalized * 100)}%</div>
         <div className="ring-label">{t("confidence") || "confidence"}</div>
       </div>
     </div>
@@ -44,7 +45,7 @@ function ConfidenceRing({ value, size = 140, t }) {
 }
 
 function BreedBar({ breed, prob, isPrimary }) {
-  const pct  = Math.round(prob * 100);
+  const pct  = Math.round(prob > 1 ? prob : prob * 100);
   const info = BREED_INFO[breed] || {};
   return (
     <div style={{ marginBottom:"0.9rem" }}>
@@ -81,12 +82,15 @@ export default function Result() {
   useEffect(() => { if (!result) navigate("/upload"); }, [result, navigate]);
   if (!result) return null;
 
-  const { primary_breed, secondary_breed, confidence, crossbreed_ratio, all_predictions, class_names } = result;
+  const { primary_breed, secondary_breed, confidence, crossbreed_ratio, all_predictions, all_probabilities, class_names } = result;
+  const normalizedConfidence = confidence > 1 ? confidence / 100 : confidence;
   const info    = BREED_INFO[primary_breed] || {};
   const secInfo = BREED_INFO[secondary_breed] || {};
 
-  const compositions = all_predictions
-    ? Object.entries(all_predictions).sort(([,a],[,b]) => b - a)
+  const probabilityMap = all_probabilities || all_predictions;
+
+  const compositions = probabilityMap
+    ? Object.entries(probabilityMap).sort(([,a],[,b]) => b - a)
     : class_names && crossbreed_ratio
       ? class_names.map((b, i) => [b, crossbreed_ratio[i]]).sort(([,a],[,b]) => b - a)
       : [];
@@ -153,7 +157,7 @@ export default function Result() {
 
           {/* Confidence ring */}
           <div className="card" style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"0.75rem", padding:"1.5rem 1rem" }}>
-            <ConfidenceRing value={confidence} size={140} t={t} />
+            <ConfidenceRing value={normalizedConfidence} size={140} t={t} />
             <div style={{ textAlign:"center" }}>
               <p style={{ fontWeight:700, fontSize:"0.875rem", marginBottom:"0.2rem" }}>
                 {primary_breed.replace("_"," ")}
@@ -242,7 +246,7 @@ export default function Result() {
               <p style={{ fontSize:"0.78rem", color:"var(--slate-300)", lineHeight:1.7 }}>
                 The model identified this animal as predominantly{" "}
                 <strong style={{ color:"var(--white)" }}>{primary_breed.replace("_"," ")}</strong> with{" "}
-                <strong style={{ color:"var(--green-400)" }}>{Math.round(confidence * 100)}% confidence</strong>.
+                <strong style={{ color:"var(--green-400)" }}>{Math.round(normalizedConfidence * 100)}% confidence</strong>.
                 {secondary_breed && secondary_breed !== primary_breed &&
                   ` Secondary breed traits from ${secondary_breed.replace("_"," ")} were also detected.`}
               </p>

@@ -9,7 +9,7 @@ const BREED_BADGE = { Gir:"badge-green", Holstein:"badge-blue", Jersey:"badge-am
 const BREED_ICON  = { Gir:"🐄", Holstein:"🐄", Jersey:"🐄", Red_Sindhi:"🐂", Sahiwal:"🐄" };
 
 function ConfBar({ value }) {
-  const pct   = Math.round(value * 100);
+  const pct   = Math.round(value > 1 ? value : value * 100);
   const color = pct >= 80 ? "var(--green-400)" : pct >= 60 ? "var(--amber-400)" : "var(--red-400)";
   return (
     <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
@@ -68,7 +68,7 @@ export default function History() {
   const filtered = history;
 
   const avgConf = history.length
-    ? Math.round(history.reduce((s,h) => s + (h.confidence||0), 0) / history.length * 100)
+    ? Math.round(history.reduce((s,h) => s + ((h.confidence || 0) > 1 ? h.confidence : (h.confidence || 0) * 100), 0) / history.length)
     : 0;
 
   const STATS = [
@@ -166,14 +166,16 @@ export default function History() {
                   {filtered.map((item, i) => {
                     const breed    = item.primary_breed || item.breed || "Unknown";
                     const secBreed = item.secondary_breed || "—";
-                    const date     = item.created_at
-                      ? new Date(item.created_at).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" })
+                    const recordDate = item.timestamp || item.created_at;
+                    const itemId = item.id || item._id;
+                    const date     = recordDate
+                      ? new Date(recordDate).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" })
                       : "—";
-                    const time     = item.created_at
-                      ? new Date(item.created_at).toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" })
+                    const time     = recordDate
+                      ? new Date(recordDate).toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" })
                       : "";
                     return (
-                      <tr key={item.id || i}>
+                      <tr key={itemId || i}>
                         <td style={{ color:"var(--slate-600)", fontSize:"0.8rem" }}>{i + 1}</td>
                         <td>
                           <div style={{ display:"flex", alignItems:"center", gap:"0.6rem" }}>
@@ -194,20 +196,18 @@ export default function History() {
                         </td>
                         <td>
                           <div style={{ display:"flex", gap:"0.4rem" }}>
-                            {item.result && (
-                              <button
-                                className="btn btn-outline btn-sm"
-                                onClick={() => navigate("/result", { state:{ result: item.result || item, previewUrl: null } })}
-                              >
-                                <Eye size={13} /> {t("view")}
-                              </button>
-                            )}
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => navigate("/result", { state:{ result: item.result || item, previewUrl: null } })}
+                            >
+                              <Eye size={13} /> {t("view")}
+                            </button>
                             <button
                               className="btn btn-danger btn-sm"
-                              disabled={deleting === item.id}
-                              onClick={() => handleDelete(item.id)}
+                              disabled={deleting === itemId}
+                              onClick={() => handleDelete(itemId)}
                             >
-                              {deleting === item.id ? "…" : <Trash2 size={13} />}
+                              {deleting === itemId ? "…" : <Trash2 size={13} />}
                             </button>
                           </div>
                         </td>
