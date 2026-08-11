@@ -77,14 +77,42 @@ export const getPredictionById = async (id) => {
 };
 
 /**
- * Sync user data with the backend after login
+ * Record whether a prediction was correct
+ */
+export const submitPredictionFeedback = async (id, isCorrect, correctBreed = null) => {
+  const response = await api.post(`/api/history/${id}/feedback`, {
+    is_correct: isCorrect,
+    correct_breed: correctBreed,
+  });
+  return response.data;
+};
+
+/**
+ * Sync the signed-in user with the backend.
+ * Identity comes from the verified token server-side; we only send the profile
+ * fields the backend cannot read from the token itself.
  */
 export const syncUser = async (user) => {
   const response = await api.post("/api/auth/sync", {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
+    displayName: user?.displayName ?? null,
+    photoURL: user?.photoURL ?? null,
   });
+  return response.data;
+};
+
+/**
+ * Breeds the loaded model can actually predict, with their info cards
+ */
+export const getBreeds = async () => {
+  const response = await api.get("/api/breeds");
+  return response.data;
+};
+
+/**
+ * Backend + model status. Used to warn when no model is loaded.
+ */
+export const getHealth = async () => {
+  const response = await api.get("/health");
   return response.data;
 };
 

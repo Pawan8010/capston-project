@@ -1,8 +1,14 @@
-# ML Service — standalone dependencies
-tensorflow>=2.15.0
+# ML service - dataset preparation, training and evaluation.
+#
+# PyTorch rather than TensorFlow: TF publishes no wheel for Python 3.13+, and
+# this project targets 3.14. Torch works on every version we support.
+# CPU wheels are the default on PyPI; for CUDA see https://pytorch.org/get-started/
+
+torch>=2.4.0
+torchvision>=0.19.0
+
 Pillow>=10.2.0
 numpy>=1.26.0
-opencv-python-headless>=4.9.0
-scikit-learn>=1.4.0
-matplotlib>=3.8.0
-kaggle>=1.6.0
+scikit-learn>=1.4.0      # classification report + confusion matrix
+matplotlib>=3.8.0        # confusion matrix image
+huggingface_hub>=0.23.0  # downloads the dataset, no account needed

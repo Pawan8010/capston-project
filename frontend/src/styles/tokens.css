@@ -1,0 +1,380 @@
+/* ════════════════════════════════════════════════════════════════
+   LivestockAI — design tokens
+   Three tiers, in dependency order:
+     1. Primitives  raw ramps. Never referenced by a component.
+     2. Semantic    roles (surface, text, border, brand). What UI uses.
+     3. Component   per-component knobs that lean on the semantic tier.
+   Only the semantic tier is redefined per theme, so a component that
+   uses roles is automatically correct in both.
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 1. Primitives ─────────────────────────────────────────── */
+
+  /* Brand — agricultural green */
+  --green-50:  #ecfdf5;
+  --green-100: #d1fae5;
+  --green-200: #a7f3d0;
+  --green-300: #6ee7b7;
+  --green-400: #34d399;
+  --green-500: #10b981;
+  --green-600: #059669;
+  --green-700: #047857;
+  --green-800: #065f46;
+  --green-900: #064e3b;
+  --green-950: #022c22;
+
+  /* Neutral — slightly cool, reads as "instrument" not "paper" */
+  --gray-0:   #ffffff;
+  --gray-25:  #fcfdfe;
+  --gray-50:  #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-400: #94a3b8;
+  --gray-500: #64748b;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1e293b;
+  --gray-850: #172033;
+  --gray-900: #0f172a;
+  --gray-925: #0b1120;
+  --gray-950: #060b16;
+
+  /* Status */
+  --teal-400:   #2dd4bf;
+  --teal-500:   #14b8a6;
+  --teal-600:   #0d9488;
+  --amber-300:  #fcd34d;
+  --amber-400:  #fbbf24;
+  --amber-500:  #f59e0b;
+  --amber-600:  #d97706;
+  --red-400:    #f87171;
+  --red-500:    #ef4444;
+  --red-600:    #dc2626;
+  --red-700:    #b91c1c;
+  --blue-400:   #60a5fa;
+  --blue-500:   #3b82f6;
+  --blue-600:   #2563eb;
+  --violet-400: #a78bfa;
+  --violet-500: #8b5cf6;
+
+  /* ── Typography ────────────────────────────────────────────── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Poppins", var(--font-sans);
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+
+  /* 1.200 minor-third scale off a 16px base */
+  --text-2xs: 0.6875rem;  /* 11 */
+  --text-xs:  0.75rem;    /* 12 */
+  --text-sm:  0.8125rem;  /* 13 */
+  --text-md:  0.875rem;   /* 14 — default UI size */
+  --text-base:1rem;       /* 16 */
+  --text-lg:  1.125rem;   /* 18 */
+  --text-xl:  1.375rem;   /* 22 */
+  --text-2xl: 1.75rem;    /* 28 */
+  --text-3xl: 2.25rem;    /* 36 */
+  --text-4xl: 3rem;       /* 48 */
+  --text-5xl: 3.75rem;    /* 60 */
+
+  --leading-tight: 1.15;
+  --leading-snug:  1.35;
+  --leading-normal:1.55;
+  --leading-loose: 1.7;
+
+  --tracking-tight: -0.02em;
+  --tracking-snug:  -0.011em;
+  --tracking-wide:  0.02em;
+  --tracking-caps:  0.06em;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ── Space — 4px base ──────────────────────────────────────── */
+  --space-0:  0;
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* ── Radius ────────────────────────────────────────────────── */
+  --radius-xs:  0.25rem;
+  --radius-sm:  0.375rem;
+  --radius-md:  0.5rem;
+  --radius-lg:  0.75rem;
+  --radius-xl:  1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full:999px;
+
+  /* ── Motion ────────────────────────────────────────────────── */
+  --dur-instant: 80ms;
+  --dur-fast:    140ms;
+  --dur-normal:  220ms;
+  --dur-slow:    380ms;
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Layout ────────────────────────────────────────────────── */
+  --sidebar-w:          264px;
+  --sidebar-w-collapsed:72px;
+  --topbar-h:           64px;
+  --container-max:      1280px;
+  --container-narrow:   720px;
+
+  /* ── Z-index ───────────────────────────────────────────────── */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-sticky:   100;
+  --z-drawer:   200;
+  --z-overlay:  300;
+  --z-modal:    400;
+  --z-toast:    500;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   2. Semantic tier — LIGHT (default)
+   Defined on bare :root so a page always has a complete palette even
+   with no [data-theme] attribute and no media query support.
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  --canvas:          var(--gray-50);
+  --surface:         var(--gray-0);
+  --surface-raised:  var(--gray-0);
+  --surface-sunken:  var(--gray-100);
+  --surface-hover:   var(--gray-100);
+  --surface-active:  var(--gray-200);
+  --surface-inverse: var(--gray-900);
+
+  --text:            var(--gray-900);
+  --text-secondary:  var(--gray-600);
+  --text-muted:      var(--gray-500);
+  --text-subtle:     var(--gray-400);
+  --text-inverse:    var(--gray-0);
+  --text-on-brand:   #ffffff;
+
+  --border:          var(--gray-200);
+  --border-subtle:   var(--gray-100);
+  --border-strong:   var(--gray-300);
+
+  --brand:           var(--green-600);
+  --brand-hover:     var(--green-700);
+  --brand-active:    var(--green-800);
+  --brand-subtle:    var(--green-50);
+  --brand-subtle-hover: var(--green-100);
+  --brand-border:    var(--green-200);
+  --brand-text:      var(--green-700);
+
+  --success:         var(--green-600);
+  --success-subtle:  var(--green-50);
+  --success-text:    var(--green-700);
+  --warning:         var(--amber-500);
+  --warning-subtle:  #fffbeb;
+  --warning-text:    var(--amber-600);
+  --danger:          var(--red-600);
+  --danger-subtle:   #fef2f2;
+  --danger-text:     var(--red-700);
+  --info:            var(--blue-600);
+  --info-subtle:     #eff6ff;
+  --info-text:       var(--blue-600);
+
+  --focus-ring:      var(--green-600);
+  --focus-ring-offset: var(--gray-0);
+
+  --overlay:         rgba(15, 23, 42, 0.45);
+  --glass:           rgba(255, 255, 255, 0.72);
+  --glass-blur:      saturate(180%) blur(16px);
+
+  /* Elevation reads through shadow in light mode. */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.10), 0 4px 8px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 24px 56px rgba(15, 23, 42, 0.14), 0 8px 16px rgba(15, 23, 42, 0.06);
+  --shadow-brand: 0 6px 20px rgba(5, 150, 105, 0.24);
+
+  --grad-brand:   linear-gradient(135deg, var(--green-600) 0%, var(--teal-600) 100%);
+  --grad-display: linear-gradient(120deg, var(--green-700) 0%, var(--teal-600) 60%, var(--green-600) 100%);
+  --grad-surface: linear-gradient(160deg, var(--gray-0), var(--gray-50));
+
+  color-scheme: light;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Semantic tier — DARK
+   Applied for an explicit [data-theme="dark"] and for system-dark
+   whenever the user has not explicitly chosen light.
+   ════════════════════════════════════════════════════════════════ */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas:          var(--gray-950);
+    --surface:         var(--gray-900);
+    --surface-raised:  var(--gray-850);
+    --surface-sunken:  var(--gray-925);
+    --surface-hover:   var(--gray-800);
+    --surface-active:  var(--gray-700);
+    --surface-inverse: var(--gray-50);
+
+    --text:            var(--gray-50);
+    --text-secondary:  var(--gray-300);
+    --text-muted:      var(--gray-400);
+    --text-subtle:     var(--gray-500);
+    --text-inverse:    var(--gray-900);
+    --text-on-brand:   #04120c;
+
+    --border:          #223049;
+    --border-subtle:   #1a2537;
+    --border-strong:   #33455f;
+
+    --brand:           var(--green-400);
+    --brand-hover:     var(--green-300);
+    --brand-active:    var(--green-200);
+    --brand-subtle:    rgba(52, 211, 153, 0.12);
+    --brand-subtle-hover: rgba(52, 211, 153, 0.18);
+    --brand-border:    rgba(52, 211, 153, 0.32);
+    --brand-text:      var(--green-300);
+
+    --success:         var(--green-400);
+    --success-subtle:  rgba(52, 211, 153, 0.13);
+    --success-text:    var(--green-300);
+    --warning:         var(--amber-400);
+    --warning-subtle:  rgba(251, 191, 36, 0.13);
+    --warning-text:    var(--amber-300);
+    --danger:          var(--red-400);
+    --danger-subtle:   rgba(248, 113, 113, 0.13);
+    --danger-text:     #fca5a5;
+    --info:            var(--blue-400);
+    --info-subtle:     rgba(96, 165, 250, 0.13);
+    --info-text:       #93c5fd;
+
+    --focus-ring:      var(--green-400);
+    --focus-ring-offset: var(--gray-950);
+
+    --overlay:         rgba(2, 6, 14, 0.68);
+    --glass:           rgba(15, 23, 42, 0.66);
+
+    /* Shadow barely reads on a dark ground — elevation comes mostly
+       from the raised surface plus a hairline. Keep depth for popovers. */
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.55);
+    --shadow-xl: 0 26px 60px rgba(0, 0, 0, 0.62);
+    --shadow-brand: 0 6px 22px rgba(16, 185, 129, 0.28);
+
+    --grad-brand:   linear-gradient(135deg, var(--green-500) 0%, var(--teal-500) 100%);
+    --grad-display: linear-gradient(120deg, var(--green-300) 0%, var(--teal-400) 55%, #a3e635 100%);
+    --grad-surface: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012));
+
+    color-scheme: dark;
+  }
+}
+
+/* Explicit dark choice must win in both directions, so repeat outside
+   the media query rather than relying on the system preference. */
+:root[data-theme="dark"] {
+  --canvas:          var(--gray-950);
+  --surface:         var(--gray-900);
+  --surface-raised:  var(--gray-850);
+  --surface-sunken:  var(--gray-925);
+  --surface-hover:   var(--gray-800);
+  --surface-active:  var(--gray-700);
+  --surface-inverse: var(--gray-50);
+
+  --text:            var(--gray-50);
+  --text-secondary:  var(--gray-300);
+  --text-muted:      var(--gray-400);
+  --text-subtle:     var(--gray-500);
+  --text-inverse:    var(--gray-900);
+  --text-on-brand:   #04120c;
+
+  --border:          #223049;
+  --border-subtle:   #1a2537;
+  --border-strong:   #33455f;
+
+  --brand:           var(--green-400);
+  --brand-hover:     var(--green-300);
+  --brand-active:    var(--green-200);
+  --brand-subtle:    rgba(52, 211, 153, 0.12);
+  --brand-subtle-hover: rgba(52, 211, 153, 0.18);
+  --brand-border:    rgba(52, 211, 153, 0.32);
+  --brand-text:      var(--green-300);
+
+  --success:         var(--green-400);
+  --success-subtle:  rgba(52, 211, 153, 0.13);
+  --success-text:    var(--green-300);
+  --warning:         var(--amber-400);
+  --warning-subtle:  rgba(251, 191, 36, 0.13);
+  --warning-text:    var(--amber-300);
+  --danger:          var(--red-400);
+  --danger-subtle:   rgba(248, 113, 113, 0.13);
+  --danger-text:     #fca5a5;
+  --info:            var(--blue-400);
+  --info-subtle:     rgba(96, 165, 250, 0.13);
+  --info-text:       #93c5fd;
+
+  --focus-ring:      var(--green-400);
+  --focus-ring-offset: var(--gray-950);
+
+  --overlay:         rgba(2, 6, 14, 0.68);
+  --glass:           rgba(15, 23, 42, 0.66);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 26px 60px rgba(0, 0, 0, 0.62);
+  --shadow-brand: 0 6px 22px rgba(16, 185, 129, 0.28);
+
+  --grad-brand:   linear-gradient(135deg, var(--green-500) 0%, var(--teal-500) 100%);
+  --grad-display: linear-gradient(120deg, var(--green-300) 0%, var(--teal-400) 55%, #a3e635 100%);
+  --grad-surface: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012));
+
+  color-scheme: dark;
+}
+
+/* Chart series. Two sets: the light ramp washes out on a dark ground
+   and the dark ramp vibrates on a light one. */
+:root {
+  --chart-1: #047857;
+  --chart-2: #0d9488;
+  --chart-3: #b45309;
+  --chart-4: #2563eb;
+  --chart-5: #7c3aed;
+  --chart-6: #be123c;
+  --chart-grid: var(--gray-200);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-1: #34d399;
+    --chart-2: #2dd4bf;
+    --chart-3: #fbbf24;
+    --chart-4: #60a5fa;
+    --chart-5: #c084fc;
+    --chart-6: #fb7185;
+    --chart-grid: #223049;
+  }
+}
+
+:root[data-theme="dark"] {
+  --chart-1: #34d399;
+  --chart-2: #2dd4bf;
+  --chart-3: #fbbf24;
+  --chart-4: #60a5fa;
+  --chart-5: #c084fc;
+  --chart-6: #fb7185;
+  --chart-grid: #223049;
+}

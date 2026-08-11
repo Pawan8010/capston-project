@@ -1,98 +1,88 @@
-import React, { useState } from "react";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
-import { Tag, MapPin, CheckCircle2, ShoppingBag, ArrowRight, TrendingUp } from "lucide-react";
+import React from "react";
+import { BadgeCheck, ScanLine, ShoppingCart, Store } from "lucide-react";
+import AppShell from "../components/layout/AppShell";
+import PageHeader from "../components/layout/PageHeader";
 import { useLanguage } from "../context/LanguageContext";
+import { Alert, Button, Card, CardBody, EmptyState } from "../components/ui";
 
-const LISTINGS = [
-  { id: 1, breed: "Gir", price: "₹85,000", location: "Rajkot, Gujarat", milk: "12L/day", age: "3 yrs", verified: true, image: "🐄" },
-  { id: 2, breed: "Holstein", price: "₹1,20,000", location: "Ludhiana, Punjab", milk: "28L/day", age: "4 yrs", verified: true, image: "🐂" },
-  { id: 3, breed: "Sahiwal", price: "₹75,000", location: "Rohtak, Haryana", milk: "15L/day", age: "5 yrs", verified: true, image: "🐄" },
-  { id: 4, breed: "Jersey", price: "₹95,000", location: "Pune, Maharashtra", milk: "18L/day", age: "2 yrs", verified: true, image: "🐂" },
+const PLANNED = [
+  {
+    icon: BadgeCheck,
+    title: "Breed-verified listings",
+    body: "A listing carries the model's identification and confidence, so the stated breed is backed by a scan rather than a seller's word.",
+  },
+  {
+    icon: ScanLine,
+    title: "Scan-to-list",
+    body: "List an animal straight from a scan in your history, with its breed and care profile already attached.",
+  },
+  {
+    icon: Store,
+    title: "Local discovery",
+    body: "Find animals by breed and region, using the same breed table the rest of the app runs on.",
+  },
 ];
 
+/**
+ * Marketplace is not built yet.
+ *
+ * The previous version shipped invented listings — prices, seller towns and
+ * yields for animals that do not exist. Fabricated records that look real
+ * are worse than an empty page, so this states the position plainly and
+ * points at the features that do work.
+ */
 export default function Marketplace() {
   const { t } = useLanguage();
 
   return (
-    <div className="home-page">
-      <Navbar />
-      
-      <main className="main-content" style={{ marginLeft: 0, paddingTop: "8rem" }}>
-        <div className="container" style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 1.5rem" }}>
-          
-          <div className="flex justify-between items-end mb-10 anim-fadeup">
-            <div>
-              <div className="hero-badge" style={{ marginBottom: "0.75rem" }}>
-                <TrendingUp size={14} /> Live Market Prices
-              </div>
-              <h1 className="hero-title" style={{ fontSize: "2.8rem", marginBottom: "0.5rem" }}>
-                {t("marketplace")}
-              </h1>
-              <p className="text-muted">Buy and sell AI-verified livestock with confidence.</p>
-            </div>
-            <div className="flex gap-3">
-              <button className="btn btn-outline">My Listings</button>
-              <button className="btn btn-primary btn-glow">List Animal</button>
-            </div>
-          </div>
+    <AppShell title={t("marketplace")}>
+      <PageHeader
+        eyebrow="Not yet available"
+        title={t("marketplace") || "Marketplace"}
+        subtitle="Buying and selling is not implemented yet. Here is what it will do when it is."
+      />
 
-          {/* Market Ticker */}
-          <div className="card card-glass mb-8 anim-fadeup" style={{ padding: "1rem", overflow: "hidden", whiteSpace: "nowrap" }}>
-            <div className="flex gap-8 items-center">
-              <div className="flex items-center gap-2">
-                <span className="badge badge-green">UP</span>
-                <span className="text-sm font-bold">Gir: ₹82k - ₹95k</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-red">DOWN</span>
-                <span className="text-sm font-bold">Jersey: ₹90k - ₹110k</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-blue">STABLE</span>
-                <span className="text-sm font-bold">Holstein: ₹1.2L - ₹1.5L</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-green">UP</span>
-                <span className="text-sm font-bold">Sahiwal: ₹70k - ₹85k</span>
-              </div>
-            </div>
-          </div>
+      <div className="stack stack--6">
+        <Alert tone="info" title="There is no marketplace backend yet">
+          Nothing is listed, priced or for sale. This page will stay empty until real listings
+          exist — it will not show sample animals that could be mistaken for genuine ones.
+        </Alert>
 
-          <div className="grid-4 mb-12">
-            {LISTINGS.map((l, i) => (
-              <div key={l.id} className="card anim-fadeup" style={{ padding: 0, overflow: "hidden", animationDelay: `${i * 0.1}s` }}>
-                <div style={{ height: "160px", background: "var(--bg-700)", display: "flex", alignItems: "center", justifyIn: "center", fontSize: "4rem" }}>
-                  {l.image}
-                </div>
-                <div style={{ padding: "1.25rem" }}>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-muted uppercase tracking-wider">{l.breed}</span>
-                    <div className="flex items-center gap-1 text-green-400 text-xs font-bold">
-                      <CheckCircle2 size={12} /> AI VERIFIED
-                    </div>
-                  </div>
-                  <h3 className="stat-value" style={{ fontSize: "1.25rem", marginBottom: "0.5rem" }}>{l.price}</h3>
-                  
-                  <div className="flex flex-direction-column gap-2 mb-4">
-                    <div className="flex items-center gap-2 text-xs text-muted">
-                      <MapPin size={12} /> {l.location}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted">
-                      <ShoppingBag size={12} /> Yield: {l.milk}
-                    </div>
-                  </div>
+        <Card>
+          <CardBody>
+            <EmptyState
+              icon={ShoppingCart}
+              title="No listings"
+              action={
+                <Button to="/upload" variant="primary" icon={ScanLine}>
+                  Identify an animal instead
+                </Button>
+              }
+            >
+              When the marketplace opens, animals you have scanned can be listed from your herd.
+            </EmptyState>
+          </CardBody>
+        </Card>
 
-                  <button className="btn btn-ghost w-full">View Details <ArrowRight size={14} /></button>
-                </div>
-              </div>
+        <div>
+          <h2 className="section__title" style={{ fontSize: "var(--text-xl)", marginBottom: "var(--space-4)" }}>
+            Planned
+          </h2>
+          <div className="grid grid--3">
+            {PLANNED.map(({ icon: Icon, title, body }) => (
+              <Card key={title}>
+                <CardBody>
+                  <span className="feature-card__icon">
+                    <Icon size={20} aria-hidden="true" />
+                  </span>
+                  <h3 className="feature-card__title">{title}</h3>
+                  <p className="feature-card__body">{body}</p>
+                </CardBody>
+              </Card>
             ))}
           </div>
-
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </AppShell>
   );
 }

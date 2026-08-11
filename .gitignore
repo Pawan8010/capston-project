@@ -4,8 +4,15 @@ __pycache__/
 *.pyc
 .env
 backend/.env
+# Model weights. The metadata beside them (class_names.json, model_meta.json,
+# eval_report.json) stays tracked — it is small, readable, and documents what
+# the deployed model actually predicts.
 *.h5
 *.keras
+*.pt
+*.pth
+*.onnx
+final_model.pt.zip
 *.egg-info/
 dist/
 build/

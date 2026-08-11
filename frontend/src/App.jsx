@@ -22,9 +22,9 @@ const Marketplace = lazy(() => import("./pages/Marketplace"));
 
 const PageLoader = () => (
   <div className="app-loading" role="status" aria-live="polite">
-    <div className="app-loading-card">
-      <span className="spinner" />
-      <p>Loading workspace...</p>
+    <div className="app-loading__card">
+      <span className="spinner spinner--lg" />
+      <p>Loading…</p>
     </div>
   </div>
 );

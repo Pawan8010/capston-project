@@ -1,20 +1,30 @@
-from fastapi import APIRouter, Depends, Query
-from app.services.mongo_service import get_user_predictions, delete_prediction
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+
 from app.security import verify_token
+from app.services.mongo_service import (
+    delete_prediction,
+    get_prediction_by_id,
+    get_user_predictions,
+    set_feedback,
+)
 
 router = APIRouter()
+
+
+class FeedbackPayload(BaseModel):
+    is_correct: bool | None = None
+    correct_breed: str | None = None
+
 
 @router.get("/")
 async def fetch_history(
     breed: str = Query(None),
     from_date: str = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    user: dict = Depends(verify_token)
+    user: dict = Depends(verify_token),
 ):
-    """
-    Returns the prediction history for the logged-in user.
-    Supports ?breed=Gir and ?from_date=2024-01-01 filters.
-    """
+    """Prediction history for the logged-in user. Supports ?breed= and ?from_date=."""
     predictions = await get_user_predictions(
         user_id=user["uid"],
         breed_filter=breed,
@@ -23,17 +33,27 @@ async def fetch_history(
     )
     return {"predictions": predictions, "count": len(predictions)}
 
-@router.delete("/{id}")
-async def remove(id: str, user=Depends(verify_token)):
-    await delete_prediction(id, user["uid"])
-    return {"status": "deleted"}
 
-@router.post("/{id}/feedback")
-async def submit_feedback(id: str, request: dict, user=Depends(verify_token)):
-    from app.services.mongo_service import db
-    from bson import ObjectId
-    result = await db.predictions.update_one(
-        {"_id": ObjectId(id), "user_id": user["uid"]},
-        {"$set": {"feedback_given": True, "is_correct": request.get("is_correct")}}
-    )
-    return {"status": "success", "modified": result.modified_count}
+@router.get("/{record_id}")
+async def fetch_one(record_id: str, user=Depends(verify_token)):
+    """Single prediction, scoped to the owner."""
+    record = await get_prediction_by_id(record_id, user["uid"])
+    if record is None:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    return record
+
+
+@router.delete("/{record_id}")
+async def remove(record_id: str, user=Depends(verify_token)):
+    deleted = await delete_prediction(record_id, user["uid"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    return {"status": "deleted", "id": record_id}
+
+
+@router.post("/{record_id}/feedback")
+async def submit_feedback(record_id: str, payload: FeedbackPayload, user=Depends(verify_token)):
+    modified = await set_feedback(record_id, user["uid"], payload.is_correct)
+    if not modified:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    return {"status": "success", "modified": modified}

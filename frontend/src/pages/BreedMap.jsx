@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { Activity, Clock3, MapPin, RefreshCw } from "lucide-react";
-import AppShell from "../components/AppShell";
-import PageHeader from "../components/PageHeader";
+import { MapPin, RefreshCw } from "lucide-react";
+import AppShell from "../components/layout/AppShell";
+import PageHeader from "../components/layout/PageHeader";
 import { getPredictionHistory } from "../services/api";
+import { formatBreed } from "../utils/helpers";
 import { useLanguage } from "../context/LanguageContext";
+import { Alert, Badge, Button, Card, CardBody, CardHeader, EmptyState, Stat } from "../components/ui";
 
+// Leaflet's default icon URLs break under a bundler; point them at the CDN.
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
@@ -15,18 +18,36 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-const BREED_LOCATIONS = [
-  { name: "Gir", key: "Gir", coords: [21.1702, 71.8311], origin: "Gujarat, India", details: "Heat tolerant breed known for rich A2 milk." },
-  { name: "Holstein", key: "Holstein", coords: [52.1326, 5.2913], origin: "Netherlands", details: "High production dairy breed." },
-  { name: "Jersey", key: "Jersey", coords: [49.2144, -2.1312], origin: "Jersey Island, UK", details: "High butterfat dairy breed." },
-  { name: "Sahiwal", key: "Sahiwal", coords: [30.6682, 73.1114], origin: "Punjab region", details: "Heat adapted dual-purpose breed." },
-  { name: "Red Sindhi", key: "Red_Sindhi", coords: [25.3960, 68.3578], origin: "Sindh region", details: "Hardy breed suited for dry climates." },
-];
-
-const formatTime = (value) => {
-  if (!value) return "No realtime scans";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "No realtime scans" : date.toLocaleString();
+/**
+ * Home tract of each breed the model can predict, keyed by class name.
+ *
+ * These are the breeds actually in the model — an earlier version plotted
+ * Holstein in the Netherlands and Jersey in the Channel Islands, neither
+ * of which this classifier has ever seen.
+ */
+const BREED_ORIGINS = {
+  Buffalo_Banni: { coords: [23.75, 69.8], region: "Kutch, Gujarat" },
+  Buffalo_Bhadawari: { coords: [26.75, 78.9], region: "Bhadawar, UP / MP" },
+  Buffalo_Jaffrabadi: { coords: [21.0, 70.8], region: "Gir forest, Gujarat" },
+  Buffalo_Mehsana: { coords: [23.6, 72.4], region: "Mehsana, Gujarat" },
+  Buffalo_Murrah: { coords: [28.9, 76.6], region: "Rohtak, Haryana" },
+  Buffalo_Nagpuri: { coords: [21.15, 79.09], region: "Nagpur, Maharashtra" },
+  Buffalo_Nili_Ravi: { coords: [31.3, 74.9], region: "Sutlej–Ravi, Punjab" },
+  Buffalo_Surti: { coords: [21.17, 72.83], region: "Surat, Gujarat" },
+  Buffalo_Toda: { coords: [11.4, 76.7], region: "Nilgiris, Tamil Nadu" },
+  Cattle_Bargur: { coords: [11.6, 77.4], region: "Bargur hills, Tamil Nadu" },
+  Cattle_Dangi: { coords: [20.75, 73.7], region: "Dang, Maharashtra" },
+  Cattle_Hallikar: { coords: [12.6, 76.9], region: "Mysore, Karnataka" },
+  Cattle_Hariana: { coords: [29.15, 76.3], region: "Rohtak–Hisar, Haryana" },
+  Cattle_Kangayam: { coords: [11.0, 77.56], region: "Tiruppur, Tamil Nadu" },
+  Cattle_Kankrej: { coords: [24.2, 71.8], region: "Banaskantha, Gujarat" },
+  Cattle_Kasargod: { coords: [12.5, 75.0], region: "Kasaragod, Kerala" },
+  Cattle_Kenkatha: { coords: [25.2, 79.6], region: "Bundelkhand, UP / MP" },
+  Cattle_Khillari: { coords: [17.5, 75.3], region: "Solapur, Maharashtra" },
+  Cattle_Krishna_Valley: { coords: [16.5, 75.0], region: "Krishna basin, Karnataka" },
+  Cattle_Malnad_Gidda: { coords: [13.9, 75.3], region: "Malnad, Karnataka" },
+  Cattle_Nagori: { coords: [27.2, 73.7], region: "Nagaur, Rajasthan" },
+  Cattle_Nimari: { coords: [21.8, 75.6], region: "Nimar, Madhya Pradesh" },
 };
 
 export default function BreedMap() {
@@ -38,12 +59,11 @@ export default function BreedMap() {
   const loadHistory = async (showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const data = await getPredictionHistory({ limit: 100 });
+      const data = await getPredictionHistory({ limit: 200 });
       setHistory(data.predictions || []);
       setError("");
-    } catch (err) {
-      console.error(err);
-      setError("Live map data is unavailable. Static breed origins are still shown.");
+    } catch {
+      setError("Could not load your scans. Breed home tracts are still shown.");
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -51,130 +71,111 @@ export default function BreedMap() {
 
   useEffect(() => {
     loadHistory(true);
-    const interval = setInterval(() => loadHistory(false), 7000);
+    const interval = setInterval(() => loadHistory(false), 15000);
     return () => clearInterval(interval);
   }, []);
 
-  const enrichedBreeds = useMemo(() => {
-    const counts = history.reduce((acc, item) => {
-      const key = item.primary_breed;
-      if (!key) return acc;
-      acc[key] = acc[key] || { count: 0, latest: null, realtime: 0 };
-      acc[key].count += 1;
-      if (item.source === "realtime") acc[key].realtime += 1;
-      const timestamp = item.timestamp || item.created_at;
-      if (timestamp && (!acc[key].latest || new Date(timestamp) > new Date(acc[key].latest))) {
-        acc[key].latest = timestamp;
-      }
-      return acc;
-    }, {});
+  // Only plot breeds the user has actually identified.
+  const points = useMemo(() => {
+    const counts = new Map();
 
-    return BREED_LOCATIONS.map((breed) => ({
-      ...breed,
-      count: counts[breed.key]?.count || 0,
-      realtime: counts[breed.key]?.realtime || 0,
-      latest: counts[breed.key]?.latest,
-    }));
+    history.forEach((row) => {
+      const breed = row.primary_breed;
+      if (!breed || !BREED_ORIGINS[breed]) return;
+
+      const entry = counts.get(breed) ?? { breed, count: 0, latest: null };
+      entry.count += 1;
+
+      const seen = new Date(row.timestamp || row.created_at);
+      if (!Number.isNaN(seen.getTime()) && (!entry.latest || seen > entry.latest)) {
+        entry.latest = seen;
+      }
+      counts.set(breed, entry);
+    });
+
+    return [...counts.values()]
+      .map((entry) => ({ ...entry, ...BREED_ORIGINS[entry.breed] }))
+      .sort((a, b) => b.count - a.count);
   }, [history]);
 
-  const totalRealtime = history.filter((item) => item.source === "realtime").length;
-
   return (
-    <AppShell>
+    <AppShell title={t("breed_map")}>
       <PageHeader
-        eyebrow="Realtime breed map"
-        title="Live Breed Origin Map"
-        description="Breed markers update from your saved upload and live camera predictions while preserving the known geographic origin of each breed."
-        breadcrumbs={[
-          { label: t("dashboard"), to: "/dashboard" },
-          { label: t("breed_map") },
-        ]}
-        actions={(
-          <button type="button" className="btn btn-outline" onClick={() => loadHistory(true)}>
-            <RefreshCw size={16} className={loading ? "spin" : ""} /> Refresh map
-          </button>
-        )}
+        eyebrow="Geography"
+        title="Breed map"
+        subtitle="Where the breeds you have identified come from — each marker is a breed's home tract, sized by how often you have seen it."
+        actions={
+          <Button variant="secondary" icon={RefreshCw} onClick={() => loadHistory(true)}>
+            Refresh
+          </Button>
+        }
       />
 
-      {error && <div className="alert alert-error workspace-alert">Error: {error}</div>}
+      <div className="stack stack--6">
+        {error && <Alert tone="warning">{error}</Alert>}
 
-      <section className="map-live-grid">
-        <div className="workspace-card map-stat-card">
-          <Activity size={18} />
-          <div>
-            <span>Total mapped scans</span>
-            <strong>{history.length}</strong>
-          </div>
-        </div>
-        <div className="workspace-card map-stat-card">
-          <Clock3 size={18} />
-          <div>
-            <span>Realtime camera scans</span>
-            <strong>{totalRealtime}</strong>
-          </div>
-        </div>
-        <div className="workspace-card map-stat-card">
-          <MapPin size={18} />
-          <div>
-            <span>Active breed regions</span>
-            <strong>{enrichedBreeds.filter((breed) => breed.count > 0).length}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="map-shell">
-        <div className="map-panel">
-          <MapContainer
-            center={[24, 42]}
-            zoom={3}
-            style={{ height: "100%", width: "100%" }}
-            scrollWheelZoom
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {enrichedBreeds.map((breed) => (
-              <Marker key={breed.name} position={breed.coords}>
-                <Popup className="custom-popup">
-                  <div className="map-popup">
-                    <h3>{breed.name}</h3>
-                    <p><MapPin size={12} /> {breed.origin}</p>
-                    <span>{breed.details}</span>
-                    <div className="map-popup-stats">
-                      <strong>{breed.count}</strong> saved scans
-                      <br />
-                      <strong>{breed.realtime}</strong> realtime scans
-                      <br />
-                      Latest: {formatTime(breed.latest)}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
+        <div className="grid grid--3">
+          <Stat label="Breeds identified" count={points.length} loading={loading} />
+          <Stat label="Total scans" count={history.length} loading={loading} />
+          <Stat
+            label="Most seen"
+            value={points[0] ? formatBreed(points[0].breed) : "—"}
+            loading={loading}
+          />
         </div>
 
-        <aside className="workspace-card map-feed">
-          <div className="workspace-card-title">
-            <Activity size={18} />
-            <span>Live map feed</span>
-          </div>
-          {history.length === 0 ? (
-            <p className="map-feed-empty">Run a live scan or upload an image. Results will appear here automatically.</p>
-          ) : (
-            history.slice(0, 8).map((item) => (
-              <div key={item._id} className="map-feed-row">
-                <div>
-                  <strong>{(item.primary_breed || "Unknown").replace("_", " ")}</strong>
-                  <p>{item.source === "realtime" ? "Realtime scanner" : "Image upload"} · {Math.round((item.confidence || 0) > 1 ? item.confidence : (item.confidence || 0) * 100)}%</p>
-                </div>
-                <span>{formatTime(item.timestamp).split(",")[0]}</span>
+        <Card>
+          <CardHeader title="Home tracts" subtitle="Origin region of each breed you have scanned" />
+          <CardBody tight>
+            {points.length === 0 && !loading ? (
+              <EmptyState icon={MapPin} title="Nothing to map yet">
+                Identify an animal and its breed's home region appears here.
+              </EmptyState>
+            ) : (
+              <div className="map-frame">
+                <MapContainer center={[22.5, 78.9]} zoom={5} scrollWheelZoom={false}>
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {points.map((point) => (
+                    <Marker key={point.breed} position={point.coords}>
+                      <Popup>
+                        <strong>{formatBreed(point.breed)}</strong>
+                        <br />
+                        {point.region}
+                        <br />
+                        {point.count} {point.count === 1 ? "scan" : "scans"}
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
               </div>
-            ))
-          )}
-        </aside>
-      </section>
+            )}
+          </CardBody>
+        </Card>
+
+        {points.length > 0 && (
+          <Card>
+            <CardHeader title="Breeds you have seen" />
+            <CardBody>
+              <div className="stack stack--3">
+                {points.map((point) => (
+                  <div key={point.breed} className="row row--between">
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: "var(--weight-medium)" }}>
+                        {formatBreed(point.breed)}
+                      </div>
+                      <div className="text-xs text-muted">{point.region}</div>
+                    </div>
+                    <Badge tone="neutral">{point.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+        )}
+      </div>
     </AppShell>
   );
 }

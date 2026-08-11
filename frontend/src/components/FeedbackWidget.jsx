@@ -1,52 +1,71 @@
 import React, { useState } from "react";
-import api from "../services/api";
-import { ThumbsUp, ThumbsDown, CheckCircle } from "lucide-react";
+import { CheckCircle2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { submitPredictionFeedback } from "../services/api";
+import { Alert, Button, Card, CardBody } from "./ui";
 
+/**
+ * "Was this right?" prompt under a result.
+ *
+ * Feedback is stored against the prediction so mislabelled breeds can be
+ * reviewed later and fed back into training — the only signal the system
+ * gets about real-world accuracy.
+ */
 export default function FeedbackWidget({ predictionId }) {
-  const [status, setStatus] = useState("idle"); // idle, submitting, success, error
+  const [status, setStatus] = useState("idle"); // idle | submitting | success | error
 
   const handleFeedback = async (isCorrect) => {
     setStatus("submitting");
     try {
-      await api.post(`/api/history/${predictionId}/feedback`, { is_correct: isCorrect });
+      await submitPredictionFeedback(predictionId, isCorrect);
       setStatus("success");
-    } catch (err) {
-      console.error(err);
+    } catch {
       setStatus("error");
     }
   };
 
   if (status === "success") {
     return (
-      <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200 flex items-center justify-center gap-2">
-        <CheckCircle className="text-green-500" size={20} />
-        <span className="text-green-700 font-medium">Thank you for your feedback!</span>
-      </div>
+      <Alert tone="success" icon={CheckCircle2} title="Thanks — that helps">
+        Your correction is stored against this prediction and reviewed before the next training run.
+      </Alert>
     );
   }
 
   return (
-    <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-center">
-      <p className="text-sm text-gray-600 mb-3 font-medium">Was this prediction accurate?</p>
-      <div className="flex justify-center gap-3">
-        <button 
-          onClick={() => handleFeedback(true)}
-          disabled={status === "submitting"}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-green-50 hover:border-green-300 hover:text-green-600 transition-colors"
-        >
-          <ThumbsUp size={16} /> Yes
-        </button>
-        <button 
-          onClick={() => handleFeedback(false)}
-          disabled={status === "submitting"}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-colors"
-        >
-          <ThumbsDown size={16} /> No
-        </button>
-      </div>
-      {status === "error" && (
-        <p className="text-xs text-red-500 mt-2">Failed to submit feedback. Please try again.</p>
-      )}
-    </div>
+    <Card variant="sunken">
+      <CardBody>
+        <div className="row row--between row--wrap">
+          <div>
+            <p style={{ fontWeight: "var(--weight-semibold)" }}>Was this prediction accurate?</p>
+            <p className="text-sm text-muted">Your answer is used to review the model.</p>
+          </div>
+
+          <div className="row">
+            <Button
+              variant="secondary"
+              icon={ThumbsUp}
+              disabled={status === "submitting"}
+              onClick={() => handleFeedback(true)}
+            >
+              Yes
+            </Button>
+            <Button
+              variant="secondary"
+              icon={ThumbsDown}
+              disabled={status === "submitting"}
+              onClick={() => handleFeedback(false)}
+            >
+              No
+            </Button>
+          </div>
+        </div>
+
+        {status === "error" && (
+          <div style={{ marginTop: "var(--space-4)" }}>
+            <Alert tone="danger">Could not save your feedback. Please try again.</Alert>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }

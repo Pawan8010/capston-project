@@ -1,36 +1,37 @@
 import React from "react";
+import { AlertTriangle } from "lucide-react";
+import { Progress } from "./ui";
 
-const ConfidenceBar = ({ confidence }) => {
-  /**
-   * Animated confidence bar with color coding.
-   * Green  = confidence >= 85 (reliable)
-   * Yellow = confidence 60-84 (acceptable)
-   * Red    = confidence < 60  (unreliable, show warning)
-   */
-  const color = confidence >= 85 ? "bg-green-500"
-              : confidence >= 60 ? "bg-yellow-400"
-              : "bg-red-500";
+/**
+ * Confidence meter for a prediction.
+ *
+ * Bands:  >= 85 reliable · 60-84 acceptable · < 60 unreliable.
+ * A weak call is labelled weak rather than dressed up as an answer, and
+ * the band drives colour through a class so the reading survives a
+ * theme switch.
+ */
+export default function ConfidenceBar({ confidence = 0, label = "Confidence" }) {
+  const value = Math.max(0, Math.min(100, Number(confidence) || 0));
+  const band = value >= 85 ? "high" : value >= 60 ? "medium" : "low";
 
   return (
-    <div className="mt-3">
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-gray-600">Confidence</span>
-        <span className="font-semibold">{confidence}%</span>
+    <div className={`confidence confidence--${band}`}>
+      <div className="confidence__row">
+        <span className="eyebrow">{label}</span>
+        <span className="confidence__value">{value.toFixed(1)}%</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-3">
-        <div
-          className={`${color} h-3 rounded-full transition-all duration-700`}
-          style={{ width: `${confidence}%` }}
-        />
-      </div>
-      {confidence < 60 && (
-        <p className="text-red-500 text-xs mt-1">
-          ⚠ Low confidence — result may be inaccurate.
-          Try a clearer or closer photo.
+
+      <Progress value={value} label={`${label}: ${value.toFixed(1)} percent`} />
+
+      {band === "low" && (
+        <p className="row text-sm" style={{ color: "var(--danger-text)", alignItems: "flex-start" }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+          <span>
+            The model is unsure. Treat this as a hint, not an identification — try a closer,
+            sharper, side-on photo.
+          </span>
         </p>
       )}
     </div>
   );
-};
-
-export default ConfidenceBar;
+}

@@ -1,13 +1,25 @@
-import os
+"""
+Database wiring.
+
+The app must stay usable with no MongoDB running - a demo or a fresh clone
+should still predict, store history and render the dashboard. So alongside the
+real Motor client we always keep an in-memory store with the same async API.
+`mongo_service` falls back to it whenever a Mongo call fails.
+"""
+
+from __future__ import annotations
+
+import logging
 import uuid
 from datetime import datetime
-from dotenv import load_dotenv
 
-load_dotenv()  # loads backend/.env automatically
+from app.core.config import settings
 
-# MongoDB connection — database: finalyearproject
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/finalyearproject")
-DB_NAME   = os.getenv("DB_NAME",   "finalyearproject")
+logger = logging.getLogger(__name__)
+
+MONGO_URI = settings.MONGO_URI
+DB_NAME = settings.DB_NAME or settings.MONGO_DB
+
 
 class _InsertResult:
     def __init__(self, inserted_id):
@@ -19,13 +31,42 @@ class _UpdateResult:
         self.modified_count = modified_count
 
 
+class _DeleteResult:
+    def __init__(self, deleted_count=0):
+        self.deleted_count = deleted_count
+
+
+def _matches(doc: dict, query: dict) -> bool:
+    for key, condition in query.items():
+        value = doc.get(key)
+        if isinstance(condition, dict):
+            for op, operand in condition.items():
+                if op == "$gte" and not (value is not None and value >= operand):
+                    return False
+                if op == "$lte" and not (value is not None and value <= operand):
+                    return False
+                if op == "$gt" and not (value is not None and value > operand):
+                    return False
+                if op == "$lt" and not (value is not None and value < operand):
+                    return False
+                if op == "$ne" and value == operand:
+                    return False
+                if op == "$in" and value not in operand:
+                    return False
+        elif str(value) != str(condition):
+            return False
+    return True
+
+
 class _MemoryCursor:
     def __init__(self, docs):
         self.docs = list(docs)
 
-    def sort(self, key, direction):
-        reverse = direction < 0
-        self.docs.sort(key=lambda doc: doc.get(key, datetime.min), reverse=reverse)
+    def sort(self, key, direction=1):
+        self.docs.sort(
+            key=lambda doc: doc.get(key) or datetime.min,
+            reverse=direction < 0,
+        )
         return self
 
     def limit(self, limit):
@@ -33,7 +74,7 @@ class _MemoryCursor:
         return self
 
     async def to_list(self, length=None):
-        return self.docs[:length]
+        return self.docs[:length] if length else list(self.docs)
 
     def __aiter__(self):
         self._iter = iter(self.docs)
@@ -48,41 +89,47 @@ class _MemoryCursor:
 
 class _MemoryCollection:
     def __init__(self):
-        self.docs = []
+        self.docs: list[dict] = []
 
     async def insert_one(self, doc):
-        inserted_id = str(uuid.uuid4())
+        inserted_id = doc.get("_id") or str(uuid.uuid4())
         self.docs.append({**doc, "_id": inserted_id})
         return _InsertResult(inserted_id)
 
     async def update_one(self, query, update, upsert=False):
         for doc in self.docs:
-            if all(doc.get(k) == v for k, v in query.items()):
+            if _matches(doc, query):
                 doc.update(update.get("$set", {}))
                 return _UpdateResult(1)
         if upsert:
-            self.docs.append({**query, **update.get("$set", {})})
+            self.docs.append(
+                {"_id": str(uuid.uuid4()), **query, **update.get("$set", {})}
+            )
             return _UpdateResult(1)
         return _UpdateResult(0)
 
     async def find_one(self, query, projection=None):
         for doc in self.docs:
-            if all(doc.get(k) == v for k, v in query.items()):
-                return doc
+            if _matches(doc, query):
+                return dict(doc)
         return None
 
     def find(self, query=None, projection=None):
-        query = query or {}
-        docs = [doc for doc in self.docs if all(doc.get(k) == v for k, v in query.items())]
-        return _MemoryCursor(docs)
+        return _MemoryCursor(dict(doc) for doc in self.docs if _matches(doc, query or {}))
 
-    async def count_documents(self, query):
-        return len([doc for doc in self.docs if all(doc.get(k) == v for k, v in query.items())])
+    async def count_documents(self, query=None):
+        return sum(1 for doc in self.docs if _matches(doc, query or {}))
 
     async def delete_one(self, query):
-        self.docs = [doc for doc in self.docs if not all(str(doc.get(k)) == str(v) for k, v in query.items())]
+        for index, doc in enumerate(self.docs):
+            if _matches(doc, query):
+                del self.docs[index]
+                return _DeleteResult(1)
+        return _DeleteResult(0)
 
     def aggregate(self, pipeline):
+        # mongo_service computes analytics in Python for the memory path,
+        # so an empty cursor here is enough to keep the API shape.
         return _MemoryCursor([])
 
 
@@ -91,11 +138,19 @@ class _MemoryDB:
         self.predictions = _MemoryCollection()
         self.users = _MemoryCollection()
 
+    def __getitem__(self, name):
+        return getattr(self, name)
+
+
+# Always available, used whenever a real Mongo call fails.
+memory_db = _MemoryDB()
 
 try:
     import motor.motor_asyncio
-    client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=500)
+
+    client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=1500)
     db = client[DB_NAME]
 except ImportError:
+    logger.warning("motor is not installed - using in-memory storage only.")
     client = None
-    db = _MemoryDB()
+    db = memory_db

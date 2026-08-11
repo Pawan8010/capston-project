@@ -1,131 +1,115 @@
 """
-ML Prediction Module — Livestock Breed Classifier
-Extracted from capston.py (Google Colab training notebook).
+Command-line breed prediction - for testing a trained model without the API.
 
-Model: MobileNetV2 transfer learning
-Input: 224x224 RGB image, normalised to [0,1]
-Classes: Gir, Holstein, Jersey, Sahiwal, Red_Sindhi
+It reuses the backend's BreedPredictor so the CLI and the running service share
+exactly one preprocessing and decoding path. If they drifted apart, a photo could
+score differently here than through /api/predict, which makes debugging useless.
+
+Usage:
+    python ml-service/predict.py path/to/cow.jpg
+    python ml-service/predict.py path/to/cow.jpg --top 10
+    python ml-service/predict.py photos/*.jpg
 """
 
-import os
+from __future__ import annotations
+
+import argparse
 import json
-import numpy as np
-from PIL import Image
-import tensorflow as tf
+import sys
+from pathlib import Path
 
-# ── Path to the trained .h5 model ──────────────────────────────────────────
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "breed_model.h5")
-CLASS_INDEX_PATH = os.path.join(os.path.dirname(__file__), "models", "class_indices.json")
+BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parent
+MODEL_DIR = BASE_DIR / "models"
 
-# ── Breed classes — MUST match the order used during training ───────────────
-# ImageDataGenerator sorts directories alphabetically, so this order is:
-DEFAULT_CLASS_NAMES = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
+# The Windows console defaults to cp1252, which cannot encode the box-drawing
+# and block characters used below — printing a result would raise instead of
+# showing it. Ask for UTF-8 and fall back to replacement characters rather
+# than failing on a terminal that cannot do it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - exotic streams
+        pass
 
+# Reuse the backend implementation rather than duplicating it here.
+sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-def load_class_names() -> list[str]:
-    if not os.path.exists(CLASS_INDEX_PATH):
-        return DEFAULT_CLASS_NAMES.copy()
-    with open(CLASS_INDEX_PATH, "r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if isinstance(payload, dict):
-        return [label for label, _ in sorted(payload.items(), key=lambda item: item[1])]
-    if isinstance(payload, list):
-        return payload
-    return DEFAULT_CLASS_NAMES.copy()
-
-
-CLASS_NAMES = load_class_names()
-
-# ── Image preprocessing constants (same as Colab notebook) ─────────────────
-IMG_SIZE = (224, 224)
-
-# ── Singleton model ─────────────────────────────────────────────────────────
-_model = None
+from app.services.ml_service import BreedPredictor, ModelUnavailableError  # noqa: E402
+from app.services.breed_info import get_breed_info  # noqa: E402
 
 
-def load_model() -> tf.keras.Model:
-    """Load the .h5 model once and cache it."""
-    global _model
-    if _model is None:
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(
-                f"Model file not found at: {MODEL_PATH}\n"
-                "Make sure 'breed_model.h5' is placed inside ml-service/models/"
+def build_predictor() -> BreedPredictor:
+    return BreedPredictor(
+        model_path=str(MODEL_DIR / "breed_model.pt"),
+        class_index_path=str(MODEL_DIR / "class_names.json"),
+        meta_path=str(MODEL_DIR / "model_meta.json"),
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("images", nargs="+", help="Image file(s) to classify")
+    parser.add_argument("--top", type=int, default=5, help="How many candidates to show")
+    parser.add_argument("--json", action="store_true", help="Emit raw JSON instead of a table")
+    parser.add_argument("--info", action="store_true", help="Also print the breed care card")
+    args = parser.parse_args()
+
+    predictor = build_predictor()
+    if predictor.model is None:
+        print(f"No model loaded: {predictor.unavailable_reason}", file=sys.stderr)
+        print(
+            "Train one with:\n"
+            "  python ml-service/scripts/download_dataset.py\n"
+            "  python ml-service/scripts/prepare_dataset.py\n"
+            "  python ml-service/train.py",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"Model: {predictor.meta.get('arch', 'unknown')} | {len(predictor.labels)} classes\n")
+
+    exit_code = 0
+    for raw_path in args.images:
+        path = Path(raw_path)
+        if not path.exists():
+            print(f"{path}: not found", file=sys.stderr)
+            exit_code = 1
+            continue
+
+        try:
+            result = predictor.predict(path.read_bytes())
+        except (ModelUnavailableError, ValueError) as exc:
+            print(f"{path}: {exc}", file=sys.stderr)
+            exit_code = 1
+            continue
+
+        if args.json:
+            print(json.dumps(result, indent=2))
+            continue
+
+        print(f"── {path.name}")
+        print(f"   {result['primary_breed'].replace('_', ' ')}  ({result['confidence']:.1f}%)")
+        for entry in result["top_predictions"][: args.top]:
+            bar = "█" * max(1, round(entry["confidence"] / 4))
+            print(f"     {entry['breed'].replace('_', ' '):28s} {entry['confidence']:5.1f}%  {bar}")
+
+        if result["crossbreed_ratio"] > 0.15:
+            print(
+                f"   Possible cross with {result['secondary_breed'].replace('_', ' ')} "
+                f"({result['crossbreed_ratio'] * 100:.0f}% of the top-two mass)"
             )
-        _model = tf.keras.models.load_model(MODEL_PATH)
-    return _model
+
+        if args.info:
+            info = get_breed_info(result["primary_breed"])
+            if info:
+                print(f"     milk    : {info.get('milk_yield', '-')}")
+                print(f"     climate : {info.get('climate', '-')}")
+                print(f"     feed    : {info.get('feed', '-')}")
+        print()
+
+    return exit_code
 
 
-def preprocess_image(pil_image: Image.Image) -> np.ndarray:
-    """
-    Resize and normalise a PIL image for MobileNetV2 input.
-    Matches the Colab preprocessing:  img / 255.0
-    """
-    img = pil_image.convert("RGB").resize(IMG_SIZE)
-    arr = np.array(img, dtype=np.float32)
-    arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
-    return arr  # shape: (224, 224, 3)
-
-
-def predict_image(pil_image: Image.Image) -> dict:
-    """
-    Run breed prediction on a PIL Image object.
-
-    Returns
-    -------
-    {
-        "primary_breed":    str,    # top predicted breed
-        "secondary_breed":  str,    # second most likely breed
-        "confidence":       float,  # probability of primary breed (0-1)
-        "crossbreed_ratio": list,   # probability for every class (same order as CLASS_NAMES)
-        "all_predictions":  dict,   # {breed_name: probability}
-    }
-    """
-    model = load_model()
-
-    arr = preprocess_image(pil_image)
-    arr = np.expand_dims(arr, axis=0)          # → (1, 224, 224, 3)
-
-    preds = model.predict(arr, verbose=0)[0]   # → (num_classes,)
-
-    # Top-2 indices (descending confidence)
-    top_indices = preds.argsort()[-2:][::-1]
-
-    primary_breed   = CLASS_NAMES[top_indices[0]]
-    secondary_breed = CLASS_NAMES[top_indices[1]]
-    confidence      = float(preds[top_indices[0]])
-
-    crossbreed_ratio = preds.tolist()   # all class probabilities
-    all_predictions  = {
-        CLASS_NAMES[i]: float(preds[i]) for i in range(len(CLASS_NAMES))
-    }
-
-    return {
-        "primary_breed":    primary_breed,
-        "secondary_breed":  secondary_breed,
-        "confidence":       confidence,
-        "crossbreed_ratio": crossbreed_ratio,
-        "all_predictions":  all_predictions,
-        "class_names":      CLASS_NAMES,
-    }
-
-
-def predict_from_path(img_path: str) -> dict:
-    """Convenience wrapper — load image from file path then predict."""
-    if not os.path.exists(img_path):
-        raise FileNotFoundError(f"Image not found: {img_path}")
-    pil_image = Image.open(img_path)
-    return predict_image(pil_image)
-
-
-# ── CLI test ─────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
-    import json
-
-    if len(sys.argv) < 2:
-        print("Usage: python predict.py <image_path>")
-        sys.exit(1)
-
-    result = predict_from_path(sys.argv[1])
-    print(json.dumps(result, indent=2))
+    sys.exit(main())

@@ -1,15 +1,36 @@
-fastapi
-uvicorn[standard]
-motor
-firebase-admin
-python-multipart
-tensorflow==2.15.0; python_version < "3.13"
-Pillow
-numpy
-python-dotenv
-pydantic
-pydantic-settings
-opencv-python-headless
-openai
-pytest
-httpx
+# FastAPI backend.
+#
+# Inference runs on PyTorch: train.py exports a frozen TorchScript graph, so the
+# backend needs `torch` but not `torchvision`. TensorFlow is intentionally absent
+# (no wheel for Python 3.13+); a legacy .h5 model still loads if you install TF
+# yourself on an older interpreter.
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# Database (optional at runtime - the app falls back to in-memory storage)
+motor>=3.4.0
+pymongo>=4.7.0
+
+# Auth (optional - set AUTH_ALLOW_MOCK=true to run without it)
+firebase-admin>=6.5.0
+
+# Inference
+torch>=2.4.0
+Pillow>=10.2.0
+numpy>=1.26.0
+opencv-python-headless>=4.9.0   # Laplacian blur check
+
+# Config
+python-dotenv>=1.0.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# Chatbot (optional - falls back to a rule-based responder without a key)
+openai>=1.30.0
+
+# Tests
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0

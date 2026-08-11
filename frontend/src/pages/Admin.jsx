@@ -1,147 +1,220 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { Activity, BarChart2, Inbox, ShieldAlert, Users } from "lucide-react";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
+import AppShell from "../components/layout/AppShell";
+import PageHeader from "../components/layout/PageHeader";
 import { useAuth } from "../context/AuthContext";
-import Sidebar from "../components/Sidebar";
 import { getAdminStats, getAdminUsers } from "../services/api";
-import { Users, Activity, BarChart2, CheckCircle } from "lucide-react";
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { formatBreed } from "../utils/helpers";
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  Skeleton,
+  Stat,
+  Table,
+} from "../components/ui";
 
-const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#a855f7"];
+const SERIES = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--chart-6)",
+];
+
+const TOOLTIP_STYLE = {
+  background: "var(--surface-raised)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-lg)",
+  color: "var(--text)",
+  fontSize: "var(--text-sm)",
+  boxShadow: "var(--shadow-lg)",
+};
 
 export default function Admin() {
   const { currentUser } = useAuth();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [denied, setDenied] = useState(false);
 
   useEffect(() => {
-    // Basic role guard on frontend, assuming token has role or relying on backend
+    let cancelled = false;
+
     Promise.all([getAdminStats(), getAdminUsers()])
       .then(([statsData, usersData]) => {
+        if (cancelled) return;
         setStats(statsData);
-        setUsers(usersData);
+        setUsers(Array.isArray(usersData) ? usersData : []);
       })
-      .catch((err) => console.error("Admin error:", err))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        // The role is enforced server-side; a 403 is the authoritative answer.
+        if (!cancelled && err?.response?.status === 403) setDenied(true);
+      })
+      .finally(() => !cancelled && setLoading(false));
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!currentUser) return <Navigate to="/login" replace />;
 
-  const pieData = Object.entries(stats?.breed_distribution || {}).map(([name, value]) => ({ name, value }));
+  const pieData = Object.entries(stats?.breed_distribution || {})
+    .map(([name, value]) => ({ name: formatBreed(name), value }))
+    .slice(0, 8);
+
+  const columns = [
+    {
+      key: "email",
+      header: "User",
+      render: (row) => (
+        <div className="row">
+          <Avatar name={row.display_name || row.email} size="sm" />
+          <div style={{ minWidth: 0 }}>
+            <strong>{row.display_name || row.email?.split("@")[0]}</strong>
+            <div className="text-xs text-muted text-truncate">{row.email}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      render: (row) => (
+        <Badge tone={row.role === "admin" ? "brand" : "neutral"}>{row.role || "user"}</Badge>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Joined",
+      render: (row) => {
+        const date = row.created_at ? new Date(row.created_at) : null;
+        return (
+          <span className="text-sm text-muted">
+            {date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString() : "—"}
+          </span>
+        );
+      },
+    },
+  ];
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <div className="main-content">
-        <div className="page-header">
-          <h2 className="text-2xl font-bold mb-1">
-            🛡️ Admin <span className="gradient-text">Dashboard</span>
-          </h2>
-          <p className="text-sm text-gray-500">System-wide statistics and user management</p>
-        </div>
+    <AppShell title="Admin">
+      <PageHeader
+        eyebrow="Administration"
+        title="System overview"
+        subtitle="Usage across every account. Roles are assigned server-side and never accepted from the client."
+      />
 
-        {loading ? (
-          <div className="flex justify-center p-12"><span className="spinner" /></div>
-        ) : (
-          <>
-            {/* Stats Row */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-              <div className="card card-blue p-5">
-                <div className="flex justify-between items-center mb-2">
-                  <Users className="text-blue-500" />
-                  <span className="badge badge-blue">Total</span>
-                </div>
-                <div className="text-2xl font-bold">{stats?.total_users || 0}</div>
-                <div className="text-sm text-gray-500">Registered Users</div>
-              </div>
-              
-              <div className="card card-green p-5">
-                <div className="flex justify-between items-center mb-2">
-                  <Activity className="text-green-500" />
-                  <span className="badge badge-green">Global</span>
-                </div>
-                <div className="text-2xl font-bold">{stats?.total_predictions || 0}</div>
-                <div className="text-sm text-gray-500">Total Predictions</div>
-              </div>
+      {denied ? (
+        <Alert tone="danger" icon={ShieldAlert} title="Administrator access required">
+          Your account does not have the admin role. Add your email to <code>ADMIN_EMAILS</code> in
+          the backend environment and sign in again.
+        </Alert>
+      ) : (
+        <div className="stack stack--6">
+          <div className="grid grid--3">
+            <Stat label="Registered users" count={stats?.total_users ?? 0} icon={Users} loading={loading} />
+            <Stat label="Total predictions" count={stats?.total_predictions ?? 0} icon={BarChart2} loading={loading} />
+            <Stat label="Distinct breeds seen" count={pieData.length} icon={Activity} loading={loading} />
+          </div>
 
-              <div className="card card-amber p-5">
-                <div className="flex justify-between items-center mb-2">
-                  <BarChart2 className="text-amber-500" />
-                  <span className="badge badge-amber">Most Common</span>
-                </div>
-                <div className="text-xl font-bold truncate">
-                  {Object.entries(stats?.breed_distribution || {}).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—"}
-                </div>
-                <div className="text-sm text-gray-500">Top Detected Breed</div>
-              </div>
-
-              <div className="card card-purple p-5">
-                <div className="flex justify-between items-center mb-2">
-                  <CheckCircle className="text-purple-500" />
-                  <span className="badge badge-purple">System</span>
-                </div>
-                <div className="text-2xl font-bold">Online</div>
-                <div className="text-sm text-gray-500">API Status</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-              {/* Breed Distribution Global */}
-              <div className="card col-span-1 p-5">
-                <h3 className="font-bold text-gray-800 mb-4">Global Breed Distribution</h3>
-                <div style={{ height: 250 }}>
-                  {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+          <div className="grid grid--2">
+            <Card>
+              <CardHeader title="Breed distribution" subtitle="Across all accounts" />
+              <CardBody>
+                {loading ? (
+                  <Skeleton height="16rem" />
+                ) : pieData.length === 0 ? (
+                  <EmptyState icon={Inbox} title="No predictions recorded yet" />
+                ) : (
+                  <div style={{ width: "100%", height: "16rem" }}>
+                    <ResponsiveContainer>
                       <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="value" label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        <Pie
+                          data={pieData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={56}
+                          outerRadius={88}
+                          paddingAngle={3}
+                          stroke="none"
+                        >
                           {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            <Cell key={entry.name} fill={SERIES[index % SERIES.length]} />
                           ))}
                         </Pie>
-                        <RechartsTooltip />
+                        <RechartsTooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: "var(--text)" }} />
                       </PieChart>
                     </ResponsiveContainer>
-                  ) : (
-                    <p className="text-gray-400 text-center mt-10">No data</p>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
 
-              {/* Users Table */}
-              <div className="card col-span-2 p-5 overflow-hidden">
-                <h3 className="font-bold text-gray-800 mb-4">Registered Users</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="pb-2 font-semibold text-gray-600">Name</th>
-                        <th className="pb-2 font-semibold text-gray-600">Email</th>
-                        <th className="pb-2 font-semibold text-gray-600">Role</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((u, i) => (
-                        <tr key={u.uid || i} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                          <td className="py-3 text-gray-800 font-medium">{u.displayName || "Unknown User"}</td>
-                          <td className="py-3 text-gray-500">{u.email}</td>
-                          <td className="py-3">
-                            <span className={`badge ${u.role === 'admin' ? 'badge-amber' : 'badge-green'}`}>
-                              {u.role || 'farmer'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {users.length === 0 && (
-                        <tr><td colSpan="3" className="py-4 text-center text-gray-400">No users found</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+            <Card>
+              <CardHeader title="Most identified" subtitle="Top breeds by count" />
+              <CardBody>
+                {loading ? (
+                  <Skeleton height="16rem" />
+                ) : pieData.length === 0 ? (
+                  <EmptyState icon={Inbox} title="Nothing to rank yet" />
+                ) : (
+                  <div className="stack stack--3">
+                    {pieData.map((entry, index) => (
+                      <div key={entry.name} className="row row--between">
+                        <span className="row text-sm">
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: 3,
+                              background: SERIES[index % SERIES.length],
+                            }}
+                            aria-hidden="true"
+                          />
+                          {entry.name}
+                        </span>
+                        <Badge tone="neutral">{entry.value}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader title="Users" subtitle={`${users.length} accounts`} />
+            <CardBody tight>
+              {loading ? (
+                <div className="stack stack--3">
+                  {Array.from({ length: 4 }, (_, i) => (
+                    <Skeleton key={i} height="2.75rem" />
+                  ))}
                 </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+              ) : (
+                <Table
+                  columns={columns}
+                  rows={users}
+                  keyField="email"
+                  empty={<EmptyState icon={Users} title="No users yet" />}
+                />
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      )}
+    </AppShell>
   );
 }

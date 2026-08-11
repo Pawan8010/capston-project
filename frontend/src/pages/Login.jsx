@@ -1,26 +1,29 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
+import { ArrowRight, Camera, Eye, EyeOff, HeartPulse, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
 import LanguageToggle from "../components/LanguageToggle";
+import ThemeToggle from "../components/ThemeToggle";
+import AuthAside from "../components/layout/AuthAside";
 import { useLanguage } from "../context/LanguageContext";
-import { loginWithEmailAndPassword, signInWithGoogle } from "../services/auth";
+import { loginWithEmailAndPassword, signInDemoMode, signInWithGoogle } from "../services/auth";
+import { Alert, Button, Input } from "../components/ui";
+
+/** Firebase prefixes its codes and parenthesises the raw error; neither
+ *  helps someone who just mistyped a password. */
+const cleanError = (message) =>
+  (message || "Sign in failed.").replace("Firebase: ", "").replace(/\(.*\)/, "").trim();
 
 export default function Login() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [gloading, setGloading] = useState(false);
-  const [showPass, setShowPass] = useState(false);
-  const { t } = useLanguage();
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
-  const cleanError = (message) => (
-    message || "Sign in failed."
-  ).replace("Firebase: ", "").replace(/\(.*\)/, "").trim();
-
-  const onChange = (event) => {
-    setForm({ ...form, [event.target.name]: event.target.value });
-  };
+  const onChange = (event) => setForm({ ...form, [event.target.name]: event.target.value });
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -36,118 +39,143 @@ export default function Login() {
     }
   };
 
+  // Local session, no Firebase round-trip. The backend accepts the matching
+  // "demo-token" when AUTH_ALLOW_MOCK is on, so the whole app is explorable
+  // without any Firebase project configured.
+  const handleDemo = async () => {
+    setError("");
+    setDemoLoading(true);
+    try {
+      await signInDemoMode();
+      navigate("/dashboard");
+    } catch (err) {
+      setError(cleanError(err.message || "Could not start a demo session."));
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   const handleGoogle = async () => {
     setError("");
-    setGloading(true);
+    setGoogleLoading(true);
     try {
       await signInWithGoogle();
       navigate("/dashboard");
     } catch (err) {
       setError(cleanError(err.message || "Google sign-in failed."));
     } finally {
-      setGloading(false);
+      setGoogleLoading(false);
     }
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-language-shell">
-        <LanguageToggle />
-      </div>
+    <div className="auth">
+      <AuthAside
+        pitch="Know the breed. Know the care."
+        sub="Point a camera at an animal and get its breed, then husbandry guidance written for Indian conditions."
+        points={[
+          { icon: Camera, text: "Photo or live camera identification" },
+          { icon: HeartPulse, text: "Breed-specific feed and disease guidance" },
+          { icon: ShieldCheck, text: "Your scan history, private to your account" },
+        ]}
+      />
 
-      <div className="auth-card">
-        <div className="auth-brand-block">
-          <div className="auth-brand-mark">
-            <span>AI</span>
-          </div>
-          <h1 className="auth-title">
-            {t("welcome_back")} <span className="gradient-text">LivestockAI</span>
-          </h1>
-          <p className="auth-subtitle">{t("sign_in_desc")}</p>
-        </div>
-
-        <button
-          onClick={handleGoogle}
-          disabled={gloading || loading}
-          className="btn btn-ghost w-full"
-          style={{ marginBottom: "1.25rem", padding: "0.75rem", border: "1.5px solid var(--border)" }}
-        >
-          {gloading ? (
-            <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> {t("signing_in")}</>
-          ) : (
-            <><ShieldCheck size={17} /> {t("continue_google")}</>
-          )}
-        </button>
-
-        <div className="auth-divider">
-          <div />
-          <span>{t("or_sign_email")}</span>
-          <div />
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div className="form-group">
-            <label className="form-label">{t("email_address")}</label>
-            <div className="input-icon-wrap">
-              <span className="input-icon"><Mail size={16} /></span>
-              <input
-                className="input"
-                type="email"
-                name="email"
-                placeholder="you@example.com"
-                value={form.email}
-                onChange={onChange}
-                required
-                autoComplete="email"
-              />
+      <div className="auth__main">
+        <div className="auth__form">
+          <div className="row row--between" style={{ marginBottom: "var(--space-8)" }}>
+            <span className="eyebrow">{t("login")}</span>
+            <div className="row">
+              <LanguageToggle />
+              <ThemeToggle />
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">{t("password")}</label>
-            <div className="input-icon-wrap">
-              <span className="input-icon"><Lock size={16} /></span>
-              <input
-                className="input"
-                type={showPass ? "text" : "password"}
+          {/* The copy key is a fragment ("Welcome back to"), so the brand
+              name has to follow it or the heading reads as cut off. */}
+          <h1 className="auth__title">
+            {t("welcome_back")} <span className="text-gradient">LivestockAI</span>
+          </h1>
+          <p className="auth__lede">{t("sign_in_desc")}</p>
+
+          <Button
+            variant="secondary"
+            size="lg"
+            block
+            icon={ShieldCheck}
+            loading={googleLoading}
+            disabled={loading}
+            onClick={handleGoogle}
+          >
+            {t("continue_google")}
+          </Button>
+
+          <div className="divider--labelled" style={{ margin: "var(--space-6) 0" }}>
+            {t("or_sign_email")}
+          </div>
+
+          <form onSubmit={handleSubmit} className="stack stack--4">
+            <Input
+              label={t("email_address")}
+              type="email"
+              name="email"
+              icon={Mail}
+              placeholder="you@example.com"
+              value={form.email}
+              onChange={onChange}
+              required
+              autoComplete="email"
+            />
+
+            <div style={{ position: "relative" }}>
+              <Input
+                label={t("password")}
+                type={showPassword ? "text" : "password"}
                 name="password"
-                placeholder="Password"
+                icon={Lock}
+                placeholder="••••••••"
                 value={form.password}
                 onChange={onChange}
                 required
                 autoComplete="current-password"
-                style={{ paddingRight: "2.5rem" }}
+                style={{ paddingRight: "2.75rem" }}
               />
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="input-eye-button"
-                aria-label={showPass ? "Hide password" : "Show password"}
-              >
-                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
+                icon={showPassword ? EyeOff : Eye}
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{ position: "absolute", right: 4, bottom: 4 }}
+              />
             </div>
+
+            {error && <Alert tone="danger">{error}</Alert>}
+
+            <Button type="submit" variant="primary" size="lg" block loading={loading} iconRight={ArrowRight}>
+              {t("login")}
+            </Button>
+          </form>
+
+          <p className="auth__meta">
+            {t("no_account")} <Link to="/signup">{t("create_one")}</Link>
+          </p>
+
+          <div className="divider--labelled" style={{ margin: "var(--space-6) 0 var(--space-4)" }}>
+            just looking?
           </div>
 
-          {error && <div className="alert alert-error">Error: {error}</div>}
-
-          <button
-            type="submit"
-            className="btn btn-primary w-full"
-            disabled={loading}
-            style={{ padding: "0.85rem", marginTop: "0.25rem" }}
+          <Button
+            variant="ghost"
+            size="sm"
+            block
+            icon={UserRound}
+            loading={demoLoading}
+            disabled={loading || googleLoading}
+            onClick={handleDemo}
           >
-            {loading ? (
-              <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> {t("signing_in")}</>
-            ) : (
-              <>{t("login")} <ArrowRight size={16} /></>
-            )}
-          </button>
-        </form>
-
-        <div className="auth-footer-text">
-          {t("no_account")}{" "}
-          <Link to="/signup">{t("create_one")} -&gt;</Link>
+            Continue as demo user
+          </Button>
         </div>
       </div>
     </div>

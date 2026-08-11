@@ -1,24 +1,14 @@
-import React, { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import Sidebar from "../components/Sidebar";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, Info, Upload as UploadIcon } from "lucide-react";
+import AppShell from "../components/layout/AppShell";
+import PageHeader from "../components/layout/PageHeader";
 import CameraScanner from "../components/CameraScanner";
-import VoiceAssistant from "../components/VoiceAssistant";
 import { useLanguage } from "../context/LanguageContext";
-import {
-  Activity,
-  ArrowRight,
-  Camera,
-  CheckCircle2,
-  Clock3,
-  FileScan,
-  Gauge,
-  Info,
-  Radio,
-  Upload,
-} from "lucide-react";
+import { formatBreed } from "../utils/helpers";
+import { Alert, Badge, Button, Card, CardBody, CardHeader, EmptyState, Stat } from "../components/ui";
 
-const normalizeConfidence = (value = 0) => (value > 1 ? value / 100 : value);
-const percent = (value = 0) => Math.round(normalizeConfidence(value) * 100);
+const percent = (value = 0) => Math.round((value > 1 ? value / 100 : value) * 100);
 
 export default function CameraPage() {
   const navigate = useNavigate();
@@ -39,158 +29,72 @@ export default function CameraPage() {
     setCapturedImage(b64);
   };
 
-  const handleViewResult = () => {
+  const openResult = () => {
     if (!lastPrediction) return;
     navigate("/result", { state: { result: lastPrediction, previewUrl: capturedImage } });
   };
 
-  const statusItems = useMemo(() => ([
-    {
-      label: "Stream",
-      value: telemetry.active ? "Online" : "Idle",
-      icon: Radio,
-      tone: telemetry.active ? "ok" : "muted",
-    },
-    {
-      label: "Loop",
-      value: telemetry.scanning ? "Scanning" : "Ready",
-      icon: Activity,
-      tone: telemetry.scanning ? "blue" : "ok",
-    },
-    {
-      label: "Latency",
-      value: telemetry.latencyMs ? `${telemetry.latencyMs} ms` : "--",
-      icon: Gauge,
-      tone: "blue",
-    },
-    {
-      label: "Frames",
-      value: telemetry.frameCount,
-      icon: FileScan,
-      tone: "muted",
-    },
-  ]), [telemetry]);
-
-  const artifacts = [
-    { title: "Frame capture", state: telemetry.frameCount > 0 ? "Generated" : "Waiting", icon: Camera },
-    { title: "Breed probabilities", state: lastPrediction ? "Verified" : "Waiting", icon: CheckCircle2 },
-    { title: "Result report", state: lastPrediction ? "Ready" : "Pending", icon: Info },
-  ];
-
   return (
-    <div className="app-layout ag-workspace">
-      <Sidebar />
-      <main className="main-content ag-main">
-        <section className="ag-command-header">
-          <div>
-            <div className="breadcrumb ag-breadcrumb">
-              <Link to="/dashboard">{t("dashboard")}</Link>
-              <span>/</span>
-              <span>{t("live_scanner")}</span>
-            </div>
-            <h2>Livestock Agent Manager</h2>
-            <p>{t("camera_desc")}</p>
-          </div>
-          <div className="ag-header-actions">
-            <Link to="/upload" className="btn btn-ghost">
-              <Upload size={16} /> {t("upload_instead")}
-            </Link>
-            <button className="btn btn-primary" onClick={handleViewResult} disabled={!lastPrediction}>
-              <Info size={16} /> {t("view_full_result")}
-            </button>
-          </div>
-        </section>
+    <AppShell title={t("live_scanner")}>
+      <PageHeader
+        eyebrow="Live identification"
+        title="Camera scanner"
+        subtitle="Frame an animal side-on and the model identifies it continuously. Scans are saved occasionally, not every frame."
+        actions={
+          <Button to="/upload" variant="secondary" icon={UploadIcon}>
+            Use a photo instead
+          </Button>
+        }
+      />
 
-        <section className="ag-status-grid">
-          {statusItems.map(({ label, value, icon: Icon, tone }) => (
-            <div key={label} className={`ag-status-tile ag-tone-${tone}`}>
-              <Icon size={18} />
-              <div>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            </div>
-          ))}
-        </section>
+      <div className="upload-grid">
+        <CameraScanner onCapture={handleCapture} onTelemetry={setTelemetry} />
 
-        <section className="ag-live-layout">
-          <div className="ag-primary-panel">
-            <div className="ag-panel-bar">
-              <div>
-                <span className="ag-kicker">Realtime Workspace</span>
-                <h3>Camera Stream</h3>
-              </div>
-              <span className={`ag-status-pill ${telemetry.active ? "is-online" : ""}`}>
-                <span /> {telemetry.active ? "Live" : "Standby"}
-              </span>
-            </div>
-            <CameraScanner
-              onCapture={handleCapture}
-              onTelemetry={(next) => setTelemetry((prev) => ({ ...prev, ...next }))}
-            />
+        <aside className="stack stack--4">
+          <div className="grid grid--2">
+            <Stat label="Frames" count={telemetry.frameCount} />
+            <Stat label="Latency" count={telemetry.latencyMs} suffix=" ms" />
           </div>
 
-          <aside className="ag-side-stack">
-            <div className="ag-side-panel ag-result-panel">
-              <div className="ag-panel-title">Latest Detection</div>
+          <Card>
+            <CardHeader title="Latest reading" subtitle="Most recent frame the model returned" />
+            <CardBody>
               {lastPrediction ? (
-                <>
-                  <div className="ag-result-breed">{lastPrediction.primary_breed?.replace("_", " ")}</div>
-                  <div className="ag-result-meta">
-                    <span>{percent(lastPrediction.confidence)}% confidence</span>
-                    <span>{lastPrediction.model_mode || "model"}</span>
-                  </div>
-                  <div className="progress-wrap ag-result-progress">
-                    <div className="progress-bar" style={{ width: `${percent(lastPrediction.confidence)}%` }} />
-                  </div>
-                  {lastPrediction.secondary_breed && (
-                    <p className="ag-muted">Secondary signal: {lastPrediction.secondary_breed.replace("_", " ")}</p>
-                  )}
-                  <button className="btn btn-primary w-full" onClick={handleViewResult}>
-                    Open Report <ArrowRight size={15} />
-                  </button>
-                </>
-              ) : (
-                <div className="ag-empty-state">
-                  <Clock3 size={28} />
-                  <p>{t("start_camera_to_see")}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="ag-side-panel">
-              <div className="ag-panel-title">Artifacts</div>
-              <div className="ag-artifact-list">
-                {artifacts.map(({ title, state, icon: Icon }) => (
-                  <div key={title} className="ag-artifact-row">
-                    <Icon size={16} />
-                    <div>
-                      <strong>{title}</strong>
-                      <span>{state}</span>
+                <div className="stack stack--4">
+                  <div>
+                    <div className="result-hero__breed" style={{ fontSize: "var(--text-2xl)" }}>
+                      {formatBreed(lastPrediction.primary_breed)}
+                    </div>
+                    <div className="row" style={{ marginTop: "var(--space-2)" }}>
+                      <Badge tone={percent(lastPrediction.confidence) >= 85 ? "success" : "neutral"}>
+                        {percent(lastPrediction.confidence)}% confidence
+                      </Badge>
+                      {lastPrediction.secondary_breed && (
+                        <Badge tone="neutral">
+                          2nd: {formatBreed(lastPrediction.secondary_breed)}
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="ag-side-panel">
-              <div className="ag-panel-title">Scanner Plan</div>
-              {[
-                "Open camera stream",
-                "Capture frames continuously",
-                "Run backend prediction",
-                "Create result artifact",
-              ].map((step, index) => (
-                <div key={step} className="ag-plan-row">
-                  <span>{index + 1}</span>
-                  <p>{step}</p>
+                  <Button variant="primary" iconRight={ArrowRight} onClick={openResult}>
+                    Open full result
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </aside>
-        </section>
-      </main>
-      <VoiceAssistant breedContext={lastPrediction} />
-    </div>
+              ) : (
+                <EmptyState icon={Info} title="Nothing scanned yet">
+                  Start the camera and the current reading appears here.
+                </EmptyState>
+              )}
+            </CardBody>
+          </Card>
+
+          <Alert tone="info" title="Getting a good reading">
+            Daylight, side-on, whole animal in frame. Hump, horns and dewlap carry most of the
+            signal the model uses.
+          </Alert>
+        </aside>
+      </div>
+    </AppShell>
   );
 }

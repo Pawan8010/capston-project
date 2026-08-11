@@ -1,25 +1,51 @@
-// Firebase Configuration
+// Firebase initialisation.
+// Config comes from frontend/.env (VITE_* vars) so the same build can point at
+// a different Firebase project without editing source.
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCSJwQo56etpdDXPgoYfSgM6DoqKRlai-0",
-  authDomain: "capston-44fda.firebaseapp.com",
-  projectId: "capston-44fda",
-  storageBucket: "capston-44fda.firebasestorage.app",
-  messagingSenderId: "1097273700890",
-  appId: "1:1097273700890:web:be44a778ba269404dcd7a3",
-  measurementId: "G-G003PWE10H",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+const missing = ["apiKey", "authDomain", "projectId", "appId"].filter(
+  (key) => !firebaseConfig[key]
+);
 
-// Export auth, storage, and analytics
+if (missing.length) {
+  console.error(
+    `Firebase config is incomplete (missing: ${missing.join(", ")}).\n` +
+      "Copy frontend/.env.example to frontend/.env and fill in your project values, " +
+      "then restart the dev server."
+  );
+}
+
+const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-export { analytics };
+
+// Analytics needs a measurementId and a supported browser context. It throws in
+// plain HTTP / SSR / some privacy modes, so it is loaded lazily and never blocks
+// auth from initialising.
+export let analytics = null;
+if (firebaseConfig.measurementId && typeof window !== "undefined") {
+  import("firebase/analytics")
+    .then(({ getAnalytics, isSupported }) =>
+      isSupported().then((ok) => {
+        if (ok) analytics = getAnalytics(app);
+      })
+    )
+    .catch(() => {
+      /* analytics is optional - ignore */
+    });
+}
+
 export default app;

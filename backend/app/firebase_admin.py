@@ -41,3 +41,13 @@ if FIREBASE_AVAILABLE and not firebase_admin._apps:
             logger.info("Firebase Admin initialized from %s", cred_path)
         except Exception as exc:
             logger.error("Failed to initialize Firebase Admin from %s: %s", cred_path, exc)
+
+
+def firebase_ready() -> bool:
+    """
+    True when Firebase Admin can actually verify an ID token.
+
+    Callers use this to tell "auth is enforced" from "auth is stubbed",
+    which are very different security postures.
+    """
+    return FIREBASE_AVAILABLE and bool(firebase_admin._apps)

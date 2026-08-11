@@ -15,6 +15,17 @@ export const formatDate = (date) => {
 };
 
 /**
+ * Turn a model class name into a readable breed name:
+ * "Cattle_Krishna_Valley" -> "Cattle Krishna Valley".
+ *
+ * Replaces every underscore. Class names carry two or more of them, so a
+ * single-underscore replace leaves the tail joined up.
+ * @param {string} name
+ * @returns {string}
+ */
+export const formatBreed = (name = "") => String(name ?? "").replace(/_/g, " ");
+
+/**
  * Format confidence score as percentage string
  * @param {number} score - decimal between 0 and 1
  * @returns {string}

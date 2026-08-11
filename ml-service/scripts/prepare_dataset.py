@@ -1,12 +1,24 @@
 """
-Prepare a 5-class cattle breed dataset for LivestockAI.
+Turn the raw Hugging Face download into a clean train/val/test image dataset.
 
-This script downloads community cattle-breed datasets from Kaggle when Kaggle
-credentials are configured, keeps only the target classes, removes corrupt and
-duplicate images, and writes fixed train/val/test splits plus a manifest.
+The raw repo ships every breed twice — once under "<Group> Breeds/" and again
+under "<Group> Images/" — and the two overlap heavily. It also contains corrupt
+files, duplicates saved at different qualities, and a long tail of breeds with
+only 7-15 photos. All of that has to go before training, otherwise the same
+photo lands in both train and test and the reported accuracy is a lie.
 
-Important: public livestock datasets are community collected and can contain
-mislabeled images. Visually spot-check every class folder before training.
+Pipeline:
+  1. Walk data/raw and group files by normalised class name (Cattle_Gir, ...).
+  2. Open every file with PIL and re-encode to RGB JPEG; drop anything corrupt.
+  3. De-duplicate on a hash of the decoded 64x64 pixels, so re-encodes and
+     resizes of the same photo collapse to one copy.
+  4. Drop classes left with fewer than --min-images photos.
+  5. Stratified split into train/val/test with a fixed seed.
+  6. Write data/{train,val,test}/<Class>/*.jpg plus a manifest and class list.
+
+Usage:
+    python ml-service/scripts/prepare_dataset.py
+    python ml-service/scripts/prepare_dataset.py --min-images 60
 """
 
 from __future__ import annotations
@@ -14,318 +26,233 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import logging
-import os
+import json
 import random
+import re
 import shutil
-import subprocess
 import sys
-import tempfile
-import zipfile
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
 
-from PIL import Image
+from PIL import Image, ImageFile
 
-LOGGER = logging.getLogger("prepare_dataset")
+ImageFile.LOAD_TRUNCATED_IMAGES = False
 
-TARGET_CLASSES = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
-MIN_IMAGES_PER_CLASS = 150
-RANDOM_SEED = 42
-DATASETS = [
-    "atharvadarpude/indian-cattle-image-dataset",
-    "anandkumarsahu09/cattle-breeds-dataset",
-    "zaidworks0508/cow-breed-classification-dataset",
-    "priyanshu594/cattle-breeds",
-]
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+BASE_DIR = Path(__file__).resolve().parents[1]
+RAW_DIR = BASE_DIR / "data" / "raw"
+DATA_DIR = BASE_DIR / "data"
+MODEL_DIR = BASE_DIR / "models"
+MANIFEST_PATH = DATA_DIR / "dataset_manifest.csv"
+CLASS_NAMES_PATH = MODEL_DIR / "class_names.json"
 
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+SPLITS = ("train", "val", "test")
 
-@dataclass(frozen=True)
-class ImageRecord:
-    source_path: Path
-    class_name: str
-    source_dataset: str
-    sha256: str
-
-
-def normalize_name(value: str) -> str:
-    return "".join(ch for ch in value.lower() if ch.isalnum())
-
-
-def normalize_dataset_ref(value: str) -> str:
-    """
-    Accept either a Kaggle slug (owner/dataset) or a URL such as
-    https://www.kaggle.com/datasets/owner/dataset.
-    """
-    text = value.strip().rstrip("/")
-    parsed = urlparse(text)
-    if parsed.scheme and parsed.netloc:
-        parts = [part for part in parsed.path.split("/") if part]
-        if len(parts) >= 3 and parts[0] == "datasets":
-            return f"{parts[1]}/{parts[2]}"
-    return text
-
-
-ALIASES = {
-    "gir": "Gir",
-    "gircow": "Gir",
-    "gircattle": "Gir",
-    "holstein": "Holstein",
-    "holsteinfriesian": "Holstein",
-    "friesian": "Holstein",
-    "hf": "Holstein",
-    "jersey": "Jersey",
-    "jerseycow": "Jersey",
-    "redsindhi": "Red_Sindhi",
-    "redsindhicow": "Red_Sindhi",
-    "red_sindhi": "Red_Sindhi",
-    "sindhi": "Red_Sindhi",
-    "sahiwal": "Sahiwal",
-    "sahiwalcow": "Sahiwal",
+# The raw folder names are inconsistent: "Nili_Ravi" vs "Nili Ravi",
+# "Red Kandhari" vs "Red_Kandhari", "Malnad_gidda" vs "Malnad Gidda".
+# Normalise to Title_Case_With_Underscores so both spellings merge.
+CANONICAL_OVERRIDES = {
+    "Nili_Ravi": "Nili_Ravi",
+    "Red_Kandhari": "Red_Kandhari",
+    "Malnad_Gidda": "Malnad_Gidda",
+    "Krishna_Valley": "Krishna_Valley",
+    "Red_Sindhi": "Red_Sindhi",
+    "South_Kanara": "South_Kanara",
+    "Karan_Swiss": "Karan_Swiss",
+    "Ongole_Dwarf_(Kavali)": "Ongole_Dwarf",
 }
 
+# Matched case-insensitively: str.capitalize() lowercases anything after a
+# leading punctuation character, so "(Kavali)" arrives as "(kavali)" and an
+# exact-case lookup would silently miss.
+_OVERRIDES_CI = {key.lower(): value for key, value in CANONICAL_OVERRIDES.items()}
 
-def map_class(path: Path) -> str | None:
-    for part in reversed(path.parts):
-        normalized = normalize_name(part)
-        if normalized in ALIASES:
-            return ALIASES[normalized]
+
+def canonical_class(group: str, breed: str) -> str:
+    """Cattle/Buffalo prefix + normalised breed name."""
+    cleaned = re.sub(r"[\s\-]+", "_", breed.strip())
+    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+    cleaned = "_".join(part.capitalize() for part in cleaned.split("_"))
+    cleaned = _OVERRIDES_CI.get(cleaned.lower(), cleaned)
+    return f"{group}_{cleaned}"
+
+
+def detect_group(path: Path) -> str | None:
+    """Infer Cattle vs Buffalo from the '<Group> Breeds'/'<Group> Images' folder."""
+    for part in path.parts:
+        lowered = part.lower()
+        if lowered.startswith("buffalo"):
+            return "Buffalo"
+        if lowered.startswith("cattle"):
+            return "Cattle"
     return None
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def pixel_hash(image: Image.Image) -> str:
+    """Hash decoded pixels so re-encodes/resizes of one photo collapse together."""
+    thumb = image.convert("RGB").resize((64, 64), Image.BILINEAR)
+    return hashlib.sha256(thumb.tobytes()).hexdigest()
 
 
-def verify_image(path: Path) -> bool:
-    try:
-        with Image.open(path) as image:
-            image.verify()
-        with Image.open(path) as image:
-            image.convert("RGB")
-        return True
-    except Exception:
-        return False
+def collect(raw_dir: Path) -> tuple[dict[str, list[tuple[Path, Image.Image]]], dict[str, int]]:
+    buckets: dict[str, list[tuple[Path, str]]] = defaultdict(list)
+    seen: set[str] = set()
+    stats = {"scanned": 0, "corrupt": 0, "duplicate": 0, "no_group": 0, "kept": 0}
 
-
-def run_kaggle_download(dataset: str, destination: Path) -> bool:
-    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
-    if not kaggle_json.exists() and not (os.getenv("KAGGLE_USERNAME") and os.getenv("KAGGLE_KEY")):
-        LOGGER.warning(
-            "Skipping %s because Kaggle credentials were not found. Add %s or set KAGGLE_USERNAME/KAGGLE_KEY.",
-            dataset,
-            kaggle_json,
-        )
-        return False
-
-    commands = [
-        [sys.executable, "-m", "kaggle", "datasets", "download", "-d", dataset, "-p", str(destination), "--unzip"],
-        ["kaggle", "datasets", "download", "-d", dataset, "-p", str(destination), "--unzip"],
-    ]
-    for command in commands:
-        try:
-            LOGGER.info("Downloading Kaggle dataset %s", dataset)
-            subprocess.run(command, check=True, timeout=1800)
-            return True
-        except subprocess.TimeoutExpired:
-            LOGGER.warning("Kaggle download timed out for %s.", dataset)
-            return False
-        except (FileNotFoundError, subprocess.CalledProcessError):
+    files = sorted(p for p in raw_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+    for path in files:
+        if ".cache" in path.parts:
             continue
-    LOGGER.warning(
-        "Could not download %s. Configure Kaggle credentials at %%USERPROFILE%%\\.kaggle\\kaggle.json "
-        "or manually place extracted datasets under ml-service/data/raw.",
-        dataset,
+        stats["scanned"] += 1
+
+        group = detect_group(path.relative_to(raw_dir))
+        if group is None:
+            stats["no_group"] += 1
+            continue
+
+        try:
+            with Image.open(path) as img:
+                img.load()
+                digest = pixel_hash(img)
+        except Exception:
+            stats["corrupt"] += 1
+            continue
+
+        if digest in seen:
+            stats["duplicate"] += 1
+            continue
+        seen.add(digest)
+
+        buckets[canonical_class(group, path.parent.name)].append((path, digest))
+        stats["kept"] += 1
+
+        if stats["scanned"] % 500 == 0:
+            print(f"   scanned {stats['scanned']}/{len(files)} ...", flush=True)
+
+    return buckets, stats
+
+
+def write_split(
+    buckets: dict[str, list[tuple[Path, str]]],
+    min_images: int,
+    seed: int,
+    val_frac: float,
+    test_frac: float,
+) -> tuple[list[str], list[dict]]:
+    rng = random.Random(seed)
+    kept = {name: items for name, items in buckets.items() if len(items) >= min_images}
+    dropped = sorted(
+        ((name, len(items)) for name, items in buckets.items() if len(items) < min_images),
+        key=lambda item: -item[1],
     )
-    return False
 
+    print(f"\nKeeping {len(kept)} classes with >= {min_images} images.")
+    if dropped:
+        preview = ", ".join(f"{name}({count})" for name, count in dropped[:8])
+        print(f"Dropping {len(dropped)} sparse classes: {preview}{' ...' if len(dropped) > 8 else ''}")
 
-def extract_zip_files(raw_dir: Path) -> None:
-    for zip_path in raw_dir.rglob("*.zip"):
-        target = zip_path.with_suffix("")
-        target.mkdir(parents=True, exist_ok=True)
-        try:
-            with zipfile.ZipFile(zip_path) as archive:
-                archive.extractall(target)
-        except zipfile.BadZipFile:
-            LOGGER.warning("Removing invalid zip file left from an interrupted download: %s", zip_path)
-            zip_path.unlink(missing_ok=True)
+    for split in SPLITS:
+        target = DATA_DIR / split
+        if target.exists():
+            shutil.rmtree(target)
 
+    class_names = sorted(kept)
+    manifest: list[dict] = []
 
-def collect_records(raw_dir: Path) -> list[ImageRecord]:
-    seen_hashes: set[str] = set()
-    records: list[ImageRecord] = []
-    corrupt = 0
-    duplicate = 0
+    for class_name in class_names:
+        items = list(kept[class_name])
+        rng.shuffle(items)
 
-    for image_path in raw_dir.rglob("*"):
-        if not image_path.is_file() or image_path.suffix.lower() not in IMAGE_EXTENSIONS:
-            continue
-        class_name = map_class(image_path.parent)
-        if not class_name:
-            continue
-        if not verify_image(image_path):
-            corrupt += 1
-            continue
-        file_hash = sha256_file(image_path)
-        if file_hash in seen_hashes:
-            duplicate += 1
-            continue
-        seen_hashes.add(file_hash)
-        source_dataset = "local-or-manual"
-        try:
-            relative_parts = image_path.relative_to(raw_dir).parts
-            if relative_parts:
-                source_dataset = relative_parts[0].replace("__", "/")
-        except ValueError:
-            pass
-        records.append(ImageRecord(image_path, class_name, source_dataset, file_hash))
+        total = len(items)
+        n_test = max(1, round(total * test_frac))
+        n_val = max(1, round(total * val_frac))
+        # Guarantee train keeps the majority even for the smallest classes.
+        n_val = min(n_val, max(1, total - n_test - 1))
 
-    LOGGER.info("Collected %s valid images; skipped %s corrupt and %s duplicate files", len(records), corrupt, duplicate)
-    return records
+        assignments = (
+            [("test", item) for item in items[:n_test]]
+            + [("val", item) for item in items[n_test : n_test + n_val]]
+            + [("train", item) for item in items[n_test + n_val :]]
+        )
 
-
-def clear_split_dirs(data_dir: Path) -> None:
-    for split in ("train", "val", "test"):
-        split_dir = data_dir / split
-        if split_dir.exists():
-            shutil.rmtree(split_dir)
-        for class_name in TARGET_CLASSES:
-            (split_dir / class_name).mkdir(parents=True, exist_ok=True)
-
-
-def split_records(records: list[ImageRecord]) -> list[tuple[ImageRecord, str]]:
-    random.seed(RANDOM_SEED)
-    by_class: dict[str, list[ImageRecord]] = {class_name: [] for class_name in TARGET_CLASSES}
-    for record in records:
-        by_class[record.class_name].append(record)
-
-    split_rows: list[tuple[ImageRecord, str]] = []
-    for class_name, class_records in by_class.items():
-        random.shuffle(class_records)
-        count = len(class_records)
-        if count < MIN_IMAGES_PER_CLASS:
-            needed = MIN_IMAGES_PER_CLASS - count
-            LOGGER.warning(
-                "%s has only %s images. Add about %s more from ICAR-NBAGR, state animal husbandry sites, "
-                "or Roboflow Universe Indian cattle breed projects before trusting accuracy.",
-                class_name,
-                count,
-                needed,
-            )
-
-        train_end = int(count * 0.8)
-        val_end = train_end + int(count * 0.1)
-        for index, record in enumerate(class_records):
-            split = "train" if index < train_end else "val" if index < val_end else "test"
-            split_rows.append((record, split))
-    return split_rows
-
-
-def copy_splits(data_dir: Path, split_rows: list[tuple[ImageRecord, str]]) -> None:
-    manifest_path = data_dir / "dataset_manifest.csv"
-    with manifest_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["filename", "class", "split", "source_dataset", "sha256"])
-        writer.writeheader()
-        for record, split in split_rows:
-            extension = record.source_path.suffix.lower()
-            filename = f"{record.sha256[:16]}{extension}"
-            destination = data_dir / split / record.class_name / filename
-            shutil.copy2(record.source_path, destination)
-            writer.writerow(
+        for split, (path, digest) in assignments:
+            out_dir = DATA_DIR / split / class_name
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / f"{digest[:16]}.jpg"
+            try:
+                with Image.open(path) as img:
+                    img.convert("RGB").save(out_path, "JPEG", quality=92)
+            except Exception:
+                continue
+            manifest.append(
                 {
-                    "filename": str(destination.relative_to(data_dir)).replace(os.sep, "/"),
-                    "class": record.class_name,
+                    "class": class_name,
                     "split": split,
-                    "source_dataset": record.source_dataset,
-                    "sha256": record.sha256,
+                    "file": str(out_path.relative_to(DATA_DIR)),
+                    "source": str(path.relative_to(RAW_DIR)),
+                    "hash": digest,
                 }
             )
-    LOGGER.info("Wrote manifest to %s", manifest_path)
+
+    return class_names, manifest
 
 
-def print_summary(split_rows: list[tuple[ImageRecord, str]]) -> None:
-    counts = defaultdict(lambda: defaultdict(int))
-    for record, split in split_rows:
-        counts[record.class_name][split] += 1
-
-    print("\nDataset summary")
-    print("| class | train | val | test | total |")
-    print("|---|---:|---:|---:|---:|")
-    grand_total = 0
-    for class_name in TARGET_CLASSES:
-        train_count = counts[class_name]["train"]
-        val_count = counts[class_name]["val"]
-        test_count = counts[class_name]["test"]
-        total = train_count + val_count + test_count
-        grand_total += total
-        print(f"| {class_name} | {train_count} | {val_count} | {test_count} | {total} |")
-    print(f"| TOTAL | | | | {grand_total} |")
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", default=Path(__file__).resolve().parents[1] / "data", type=Path)
-    parser.add_argument("--skip-download", action="store_true", help="Use files already present under data/raw")
-    parser.add_argument(
-        "--dataset",
-        action="append",
-        dest="datasets",
-        help="Kaggle dataset slug to download. Repeat to use multiple. Defaults to the known cattle datasets.",
-    )
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--raw", default=str(RAW_DIR))
+    parser.add_argument("--min-images", type=int, default=40, help="Drop classes below this count")
+    parser.add_argument("--val-frac", type=float, default=0.15)
+    parser.add_argument("--test-frac", type=float, default=0.15)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    data_dir = args.data_dir.resolve()
-    raw_dir = data_dir / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = Path(args.raw)
+    if not raw_dir.exists() or not any(raw_dir.rglob("*.jpg")):
+        raise SystemExit(
+            f"No raw images at {raw_dir}.\n"
+            "Run: python ml-service/scripts/download_dataset.py"
+        )
 
-    LOGGER.warning(
-        "Public cattle datasets are not verified ground truth. Spot-check each class folder before training."
+    print(f"Scanning {raw_dir} ...")
+    buckets, stats = collect(raw_dir)
+    print(
+        f"\nScanned {stats['scanned']} files: kept {stats['kept']}, "
+        f"{stats['duplicate']} duplicates, {stats['corrupt']} corrupt, "
+        f"{stats['no_group']} outside a breed folder."
     )
 
-    if not args.skip_download:
-        with tempfile.TemporaryDirectory(dir=raw_dir) as tmp:
-            tmp_dir = Path(tmp)
-            for dataset in [normalize_dataset_ref(item) for item in (args.datasets or DATASETS)]:
-                dataset_dir = tmp_dir / dataset.replace("/", "__")
-                dataset_dir.mkdir(parents=True, exist_ok=True)
-                run_kaggle_download(dataset, dataset_dir)
-            extract_zip_files(tmp_dir)
-            for item in tmp_dir.iterdir():
-                destination = raw_dir / item.name
-                if destination.exists():
-                    for child in item.iterdir():
-                        child_destination = destination / child.name
-                        if not child_destination.exists():
-                            shutil.move(str(child), child_destination)
-                    continue
-                shutil.move(str(item), destination)
+    class_names, manifest = write_split(
+        buckets, args.min_images, args.seed, args.val_frac, args.test_frac
+    )
 
-    extract_zip_files(raw_dir)
-    records = collect_records(raw_dir)
-    if not records:
-        LOGGER.error(
-            "No usable images were found. Install Kaggle support with `pip install kaggle`, configure "
-            "%%USERPROFILE%%\\.kaggle\\kaggle.json, or manually place extracted datasets under %s.",
-            raw_dir,
-        )
-        return 2
-    clear_split_dirs(data_dir)
-    split_rows = split_records(records)
-    copy_splits(data_dir, split_rows)
-    print_summary(split_rows)
+    if len(class_names) < 2:
+        raise SystemExit("Need at least 2 classes to train. Lower --min-images.")
 
-    LOGGER.info("Prepared %s images in %s", len(split_rows), data_dir)
-    return 0
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    CLASS_NAMES_PATH.write_text(json.dumps(class_names, indent=2), encoding="utf-8")
+
+    with MANIFEST_PATH.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["class", "split", "file", "source", "hash"])
+        writer.writeheader()
+        writer.writerows(manifest)
+
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for row in manifest:
+        counts[row["class"]][row["split"]] += 1
+
+    print(f"\n{'class':32s} {'train':>6s} {'val':>5s} {'test':>5s}")
+    print("-" * 52)
+    for name in class_names:
+        row = counts[name]
+        print(f"{name:32s} {row['train']:6d} {row['val']:5d} {row['test']:5d}")
+
+    totals = {split: sum(1 for row in manifest if row["split"] == split) for split in SPLITS}
+    print("-" * 52)
+    print(f"{'TOTAL':32s} {totals['train']:6d} {totals['val']:5d} {totals['test']:5d}")
+    print(f"\nClasses written to {CLASS_NAMES_PATH}")
+    print(f"Manifest written to {MANIFEST_PATH}")
+    print("\nNext: python ml-service/train.py")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

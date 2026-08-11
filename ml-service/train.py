@@ -1,245 +1,463 @@
 """
-Train the LivestockAI cattle breed classifier.
+Train the LivestockAI Indian cattle/buffalo breed classifier (PyTorch).
 
-Expected dataset layout:
-  data/train/Gir/*.jpg
-  data/val/Gir/*.jpg
-  data/test/Gir/*.jpg
-  ...same for Holstein, Jersey, Red_Sindhi, Sahiwal
+Why PyTorch and not TensorFlow: TF has no wheel for Python 3.13+, and this
+project runs on 3.14. Torch does, so the whole pipeline stays on one runtime.
+
+Expected layout (produced by scripts/prepare_dataset.py):
+    data/train/<Class>/*.jpg
+    data/val/<Class>/*.jpg
+    data/test/<Class>/*.jpg
+
+Two-phase transfer learning:
+    Phase 1 - freeze the backbone, train the classifier head only.
+    Phase 2 - unfreeze the top blocks, fine-tune everything at a low LR
+              on a cosine schedule.
+
+Outputs into models/:
+    breed_model.pt        TorchScript graph, loaded by the FastAPI backend
+    breed_model_state.pt  raw state_dict, for resuming or re-export
+    class_names.json      label order
+    model_meta.json       arch, image size, normalisation constants
+    eval_report.json      held-out test metrics + per-class report
+    confusion_matrix.png  held-out test confusion matrix
+
+Usage:
+    python ml-service/train.py
+    python ml-service/train.py --arch resnet50 --epochs-head 8 --epochs-finetune 30
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-import os
 import sys
+import time
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 
 try:
-    import tensorflow as tf
-except ModuleNotFoundError as exc:
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, WeightedRandomSampler
+    from torchvision import datasets, transforms
+    from torchvision import models as tvm
+except ModuleNotFoundError as exc:  # pragma: no cover - environment guard
     raise SystemExit(
-        "TensorFlow is not installed. Use Python 3.11 or 3.12, then run "
-        "`pip install -r ml-service/requirements.txt`. The current Python "
-        f"is {sys.version.split()[0]}."
+        "PyTorch/torchvision are missing. Run:\n"
+        "    pip install -r ml-service/requirements.txt"
     ) from exc
 
-try:
-    import matplotlib.pyplot as plt
-    from sklearn.metrics import classification_report, confusion_matrix
-    from sklearn.utils.class_weight import compute_class_weight
-except ModuleNotFoundError as exc:
-    raise SystemExit(
-        "Missing ML evaluation dependencies. Run `pip install -r ml-service/requirements.txt`."
-    ) from exc
-
-IMG_SIZE = (224, 224)
-BATCH_SIZE = 32
-PHASE_1_EPOCHS = int(os.getenv("PHASE_1_EPOCHS", "15"))
-PHASE_2_EPOCHS = int(os.getenv("PHASE_2_EPOCHS", "15"))
-MIN_TEST_ACCURACY = float(os.getenv("MIN_TEST_ACCURACY", "0.70"))
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 MODEL_DIR = BASE_DIR / "models"
-H5_MODEL_PATH = MODEL_DIR / "breed_model.h5"
-KERAS_MODEL_PATH = MODEL_DIR / "breed_model.keras"
-CLASS_INDEX_PATH = MODEL_DIR / "class_indices.json"
-EVAL_REPORT_PATH = MODEL_DIR / "eval_report.json"
-CONFUSION_MATRIX_PATH = MODEL_DIR / "confusion_matrix.png"
+
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
+# arch -> (torchvision builder, default weights enum, attribute holding the classifier)
+ARCHES = {
+    "efficientnet_b0": (tvm.efficientnet_b0, "EfficientNet_B0_Weights", "classifier"),
+    "mobilenet_v3_small": (tvm.mobilenet_v3_small, "MobileNet_V3_Small_Weights", "classifier"),
+    "mobilenet_v3_large": (tvm.mobilenet_v3_large, "MobileNet_V3_Large_Weights", "classifier"),
+    "resnet50": (tvm.resnet50, "ResNet50_Weights", "fc"),
+    "convnext_tiny": (tvm.convnext_tiny, "ConvNeXt_Tiny_Weights", "classifier"),
+}
+
+
+# ── data ────────────────────────────────────────────────────────────────────
+
+
+def build_transforms(img_size: int) -> tuple[transforms.Compose, transforms.Compose]:
+    train_tf = transforms.Compose(
+        [
+            transforms.RandomResizedCrop(img_size, scale=(0.55, 1.0), ratio=(0.75, 1.33)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandAugment(num_ops=2, magnitude=7),
+            transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.03),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+            transforms.RandomErasing(p=0.25, scale=(0.02, 0.15)),
+        ]
+    )
+    eval_tf = transforms.Compose(
+        [
+            transforms.Resize(int(img_size * 1.14)),
+            transforms.CenterCrop(img_size),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ]
+    )
+    return train_tf, eval_tf
 
 
 def require_split(split: str) -> Path:
     path = DATA_DIR / split
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Missing dataset split: {path}. Run `python ml-service/scripts/prepare_dataset.py` first."
+    if not path.exists() or not any(path.iterdir()):
+        raise SystemExit(
+            f"Missing dataset split: {path}\n"
+            "Run: python ml-service/scripts/prepare_dataset.py"
         )
     return path
 
 
-def load_dataset(split: str, shuffle: bool) -> tf.data.Dataset:
-    return tf.keras.utils.image_dataset_from_directory(
-        require_split(split),
-        image_size=IMG_SIZE,
-        batch_size=BATCH_SIZE,
-        shuffle=shuffle,
-        seed=42,
-        label_mode="categorical",
-    )
+def build_loaders(img_size: int, batch_size: int, workers: int):
+    train_tf, eval_tf = build_transforms(img_size)
+
+    train_ds = datasets.ImageFolder(require_split("train"), transform=train_tf)
+    val_ds = datasets.ImageFolder(require_split("val"), transform=eval_tf)
+    test_ds = datasets.ImageFolder(require_split("test"), transform=eval_tf)
+
+    # Oversample rare breeds so the loss is not dominated by Ongole/Murrah.
+    counts = Counter(label for _, label in train_ds.samples)
+    weights = [1.0 / counts[label] for _, label in train_ds.samples]
+    sampler = WeightedRandomSampler(weights, num_samples=len(train_ds), replacement=True)
+
+    common = {"num_workers": workers, "pin_memory": False, "persistent_workers": workers > 0}
+    train_dl = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, **common)
+    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, **common)
+    test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False, **common)
+    return train_ds, train_dl, val_dl, test_dl
 
 
-def optimize(ds: tf.data.Dataset) -> tf.data.Dataset:
-    return ds.cache().prefetch(tf.data.AUTOTUNE)
+# ── model ───────────────────────────────────────────────────────────────────
 
 
-def preprocess_batch(images, labels):
-    return tf.keras.applications.mobilenet_v2.preprocess_input(images), labels
+def build_model(arch: str, num_classes: int) -> nn.Module:
+    if arch not in ARCHES:
+        raise SystemExit(f"Unknown arch {arch!r}. Choose from: {', '.join(ARCHES)}")
+
+    builder, weights_enum_name, head_attr = ARCHES[arch]
+    weights = getattr(tvm, weights_enum_name).DEFAULT
+    model = builder(weights=weights)
+
+    head = getattr(model, head_attr)
+    if isinstance(head, nn.Sequential):
+        # EfficientNet/MobileNet/ConvNeXt keep the Linear at the end of a Sequential.
+        for idx in range(len(head) - 1, -1, -1):
+            if isinstance(head[idx], nn.Linear):
+                head[idx] = nn.Linear(head[idx].in_features, num_classes)
+                break
+        else:
+            raise SystemExit(f"No Linear layer found in {arch} head")
+    else:
+        setattr(model, head_attr, nn.Linear(head.in_features, num_classes))
+    return model
 
 
-def prepare_train_dataset(ds: tf.data.Dataset) -> tf.data.Dataset:
-    augmentation = tf.keras.Sequential(
-        [
-            tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomRotation(0.15),
-            tf.keras.layers.RandomZoom(0.1),
-            tf.keras.layers.RandomContrast(0.1),
-        ],
-        name="augmentation",
-    )
-    return ds.map(lambda x, y: (augmentation(x, training=True), y), num_parallel_calls=tf.data.AUTOTUNE).map(
-        preprocess_batch,
-        num_parallel_calls=tf.data.AUTOTUNE,
-    )
+def init_backbone_from(model: nn.Module, checkpoint_path: str, arch: str) -> int:
+    """
+    Warm-start the backbone from another checkpoint of the same architecture.
+
+    ImageNet features are generic; a backbone already trained to separate
+    cattle breeds starts far closer to this task. The classifier is skipped
+    on purpose — it is sized for the source label set, and carrying it over
+    would map the old breeds onto the new ones.
+
+    Returns the number of tensors actually copied.
+    """
+    head_attr = ARCHES[arch][2]
+    raw = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+
+    if isinstance(raw, dict):
+        state = None
+        for key in ("model_state", "state_dict", "model_state_dict"):
+            if key in raw and isinstance(raw[key], dict):
+                state = raw[key]
+                break
+        if state is None:
+            state = {k: v for k, v in raw.items() if isinstance(v, torch.Tensor)}
+    else:
+        raise SystemExit(f"{checkpoint_path} is not a checkpoint dict")
+
+    for prefix in ("module.", "_orig_mod."):
+        if state and all(k.startswith(prefix) for k in state):
+            state = {k[len(prefix):]: v for k, v in state.items()}
+
+    target = model.state_dict()
+    transfer = {
+        k: v
+        for k, v in state.items()
+        if not k.startswith(head_attr) and k in target and target[k].shape == v.shape
+    }
+
+    if not transfer:
+        raise SystemExit(
+            f"No backbone tensors from {checkpoint_path} matched {arch}. "
+            "Is --arch the same architecture the checkpoint was trained with?"
+        )
+
+    model.load_state_dict(transfer, strict=False)
+    return len(transfer)
 
 
-def class_weights_from_dataset(train_ds: tf.data.Dataset) -> dict[int, float]:
-    labels = []
-    for _, y_batch in train_ds.unbatch():
-        labels.append(int(tf.argmax(y_batch).numpy()))
-    classes = np.unique(labels)
-    weights = compute_class_weight(class_weight="balanced", classes=classes, y=np.array(labels))
-    return {int(class_id): float(weight) for class_id, weight in zip(classes, weights)}
+def set_backbone_trainable(model: nn.Module, arch: str, trainable: bool, top_blocks: int = 0) -> None:
+    head_attr = ARCHES[arch][2]
+    for name, param in model.named_parameters():
+        param.requires_grad = name.startswith(head_attr) or trainable
+
+    if trainable and top_blocks:
+        # Freeze everything except the last `top_blocks` stages + head.
+        stages = model.features if hasattr(model, "features") else None
+        if stages is not None:
+            cutoff = max(0, len(stages) - top_blocks)
+            for idx, block in enumerate(stages):
+                if idx < cutoff:
+                    for param in block.parameters():
+                        param.requires_grad = False
 
 
-def build_model(num_classes: int) -> tuple[tf.keras.Model, tf.keras.Model]:
-    base = tf.keras.applications.MobileNetV2(
-        input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
-        include_top=False,
-        weights="imagenet",
-    )
-    base.trainable = False
-
-    inputs = tf.keras.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))
-    x = base(inputs, training=False)
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    x = tf.keras.layers.Dense(128, activation="relu")(x)
-    x = tf.keras.layers.Dropout(0.3)(x)
-    outputs = tf.keras.layers.Dense(num_classes, activation="softmax")(x)
-    model = tf.keras.Model(inputs, outputs, name="livestockai_mobilenetv2")
-    return model, base
+# ── train / eval loops ──────────────────────────────────────────────────────
 
 
-def plot_confusion_matrix(matrix: np.ndarray, class_names: list[str]) -> None:
-    fig, ax = plt.subplots(figsize=(8, 7))
-    image = ax.imshow(matrix, interpolation="nearest", cmap="Blues")
-    fig.colorbar(image, ax=ax)
+def run_epoch(model, loader, criterion, optimizer, device, scheduler=None) -> tuple[float, float]:
+    training = optimizer is not None
+    model.train(training)
+
+    total_loss = 0.0
+    correct = 0
+    seen = 0
+
+    with torch.set_grad_enabled(training):
+        for images, labels in loader:
+            images, labels = images.to(device), labels.to(device)
+
+            if training:
+                optimizer.zero_grad(set_to_none=True)
+
+            logits = model(images)
+            loss = criterion(logits, labels)
+
+            if training:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                optimizer.step()
+                if scheduler is not None:
+                    scheduler.step()
+
+            total_loss += loss.item() * labels.size(0)
+            correct += (logits.argmax(1) == labels).sum().item()
+            seen += labels.size(0)
+
+    return total_loss / max(seen, 1), correct / max(seen, 1)
+
+
+def predict_all(model, loader, device) -> tuple[np.ndarray, np.ndarray]:
+    model.eval()
+    trues, preds = [], []
+    with torch.no_grad():
+        for images, labels in loader:
+            logits = model(images.to(device))
+            preds.extend(logits.argmax(1).cpu().tolist())
+            trues.extend(labels.tolist())
+    return np.array(trues), np.array(preds)
+
+
+def train_phase(
+    name, model, train_dl, val_dl, criterion, optimizer, scheduler, device, epochs, best
+) -> dict:
+    for epoch in range(1, epochs + 1):
+        started = time.time()
+        tr_loss, tr_acc = run_epoch(model, train_dl, criterion, optimizer, device, scheduler)
+        va_loss, va_acc = run_epoch(model, val_dl, criterion, None, device)
+
+        marker = ""
+        if va_acc > best["acc"]:
+            best.update(acc=va_acc, state={k: v.detach().cpu().clone() for k, v in model.state_dict().items()})
+            marker = "  <- best"
+
+        print(
+            f"[{name}] epoch {epoch:2d}/{epochs}  "
+            f"train {tr_loss:.3f}/{tr_acc:.3f}  val {va_loss:.3f}/{va_acc:.3f}  "
+            f"{time.time() - started:.0f}s{marker}",
+            flush=True,
+        )
+    return best
+
+
+# ── reporting ───────────────────────────────────────────────────────────────
+
+
+def save_confusion_matrix(matrix: np.ndarray, class_names: list[str], path: Path) -> None:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError:
+        print("matplotlib missing - skipping confusion matrix image")
+        return
+
+    size = max(8, len(class_names) * 0.45)
+    fig, ax = plt.subplots(figsize=(size, size * 0.9))
+    image = ax.imshow(matrix, interpolation="nearest", cmap="Greens")
+    fig.colorbar(image, ax=ax, fraction=0.046)
     ax.set(
         xticks=np.arange(len(class_names)),
         yticks=np.arange(len(class_names)),
         xticklabels=class_names,
         yticklabels=class_names,
-        ylabel="True label",
-        xlabel="Predicted label",
-        title="Cattle Breed Confusion Matrix",
+        ylabel="True breed",
+        xlabel="Predicted breed",
+        title="Breed confusion matrix (held-out test set)",
     )
-    plt.setp(ax.get_xticklabels(), rotation=35, ha="right", rotation_mode="anchor")
-    threshold = matrix.max() / 2 if matrix.size else 0
-    for row in range(matrix.shape[0]):
-        for col in range(matrix.shape[1]):
-            ax.text(
-                col,
-                row,
-                format(matrix[row, col], "d"),
-                ha="center",
-                va="center",
-                color="white" if matrix[row, col] > threshold else "black",
-            )
+    plt.setp(ax.get_xticklabels(), rotation=90, ha="center", fontsize=7)
+    plt.setp(ax.get_yticklabels(), fontsize=7)
     fig.tight_layout()
-    fig.savefig(CONFUSION_MATRIX_PATH, dpi=160)
+    fig.savefig(path, dpi=150)
     plt.close(fig)
 
 
-def evaluate_and_save(model: tf.keras.Model, test_ds: tf.data.Dataset, class_names: list[str]) -> dict:
-    y_true = []
-    y_pred = []
-    for x_batch, y_batch in test_ds:
-        probs = model.predict(x_batch, verbose=0)
-        y_true.extend(np.argmax(y_batch.numpy(), axis=1).tolist())
-        y_pred.extend(np.argmax(probs, axis=1).tolist())
+def build_report(y_true, y_pred, class_names, extra) -> dict:
+    try:
+        from sklearn.metrics import classification_report, confusion_matrix
 
-    report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True, zero_division=0)
-    matrix = confusion_matrix(y_true, y_pred)
-    accuracy = float(report["accuracy"])
-    payload = {
-        "accuracy": accuracy,
-        "minimum_required_accuracy": MIN_TEST_ACCURACY,
+        report = classification_report(
+            y_true, y_pred, labels=list(range(len(class_names))),
+            target_names=class_names, output_dict=True, zero_division=0,
+        )
+        matrix = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
+        accuracy = float(report["accuracy"])
+        macro_f1 = float(report["macro avg"]["f1-score"])
+    except ModuleNotFoundError:
+        accuracy = float((y_true == y_pred).mean())
+        matrix = np.zeros((len(class_names), len(class_names)), dtype=int)
+        for t, p in zip(y_true, y_pred):
+            matrix[t, p] += 1
+        report, macro_f1 = {}, 0.0
+
+    return {
+        "test_accuracy": accuracy,
+        "test_macro_f1": macro_f1,
         "class_names": class_names,
         "classification_report": report,
         "confusion_matrix": matrix.tolist(),
-    }
+        **extra,
+    }, matrix
+
+
+# ── main ────────────────────────────────────────────────────────────────────
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--arch", default="efficientnet_b0", choices=sorted(ARCHES))
+    parser.add_argument("--img-size", type=int, default=224)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--epochs-head", type=int, default=6)
+    parser.add_argument("--epochs-finetune", type=int, default=25)
+    parser.add_argument("--lr-head", type=float, default=1e-3)
+    parser.add_argument("--lr-finetune", type=float, default=2e-4)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--label-smoothing", type=float, default=0.1)
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = auto)")
+    parser.add_argument("--min-accuracy", type=float, default=0.0, help="Fail below this test accuracy")
+    parser.add_argument(
+        "--init-from",
+        help="Warm-start the backbone from another checkpoint of the same arch "
+        "(e.g. a model already trained on cattle) instead of ImageNet",
+    )
+    args = parser.parse_args()
+
+    if args.threads:
+        torch.set_num_threads(args.threads)
+    torch.manual_seed(42)
+    np.random.seed(42)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device} | threads: {torch.get_num_threads()} | arch: {args.arch}")
+
+    train_ds, train_dl, val_dl, test_dl = build_loaders(args.img_size, args.batch_size, args.workers)
+    class_names = train_ds.classes
+    print(f"{len(class_names)} classes, {len(train_ds)} training images\n")
+
+    model = build_model(args.arch, len(class_names))
+    if args.init_from:
+        copied = init_backbone_from(model, args.init_from, args.arch)
+        print(f"Warm-started {copied} backbone tensors from {args.init_from}\n")
+    model = model.to(device)
+    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
+    best = {"acc": 0.0, "state": None}
+
+    # Phase 1 - head only.
+    set_backbone_trainable(model, args.arch, trainable=False)
+    optimizer = torch.optim.AdamW(
+        [p for p in model.parameters() if p.requires_grad], lr=args.lr_head, weight_decay=args.weight_decay
+    )
+    best = train_phase("head", model, train_dl, val_dl, criterion, optimizer, None, device, args.epochs_head, best)
+
+    # Phase 2 - full fine-tune on a cosine schedule.
+    set_backbone_trainable(model, args.arch, trainable=True)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr_finetune, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=args.lr_finetune,
+        total_steps=args.epochs_finetune * max(1, len(train_dl)),
+        pct_start=0.25,
+    )
+    best = train_phase(
+        "fine", model, train_dl, val_dl, criterion, optimizer, scheduler, device, args.epochs_finetune, best
+    )
+
+    if best["state"] is not None:
+        model.load_state_dict(best["state"])
+    print(f"\nBest validation accuracy: {best['acc']:.4f}")
+
+    # Held-out test evaluation.
+    y_true, y_pred = predict_all(model, test_dl, device)
+    payload, matrix = build_report(
+        y_true, y_pred, class_names,
+        {
+            "val_accuracy": best["acc"],
+            "arch": args.arch,
+            "img_size": args.img_size,
+            "num_train_images": len(train_ds),
+        },
+    )
+
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    EVAL_REPORT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    plot_confusion_matrix(matrix, class_names)
-    return payload
+    model.eval().to("cpu")
 
+    # TorchScript so the backend needs torch only - no torchvision at inference.
+    scripted = torch.jit.trace(model, torch.randn(1, 3, args.img_size, args.img_size))
+    scripted = torch.jit.freeze(scripted)
+    scripted.save(str(MODEL_DIR / "breed_model.pt"))
+    torch.save(model.state_dict(), MODEL_DIR / "breed_model_state.pt")
 
-def train() -> None:
-    train_ds_raw = load_dataset("train", shuffle=True)
-    val_ds = optimize(load_dataset("val", shuffle=False).map(preprocess_batch, num_parallel_calls=tf.data.AUTOTUNE))
-    test_ds = optimize(load_dataset("test", shuffle=False).map(preprocess_batch, num_parallel_calls=tf.data.AUTOTUNE))
-    class_names = train_ds_raw.class_names
-    num_classes = len(class_names)
-
-    if num_classes < 2:
-        raise RuntimeError("Dataset must contain at least two classes.")
-
-    weights = class_weights_from_dataset(train_ds_raw)
-    train_ds = optimize(prepare_train_dataset(train_ds_raw))
-
-    model, base = build_model(num_classes)
-    callbacks = [
-        tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=2, factor=0.3, min_lr=1e-7),
-    ]
-
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
+    (MODEL_DIR / "class_names.json").write_text(json.dumps(class_names, indent=2), encoding="utf-8")
+    (MODEL_DIR / "class_indices.json").write_text(
+        json.dumps({name: i for i, name in enumerate(class_names)}, indent=2), encoding="utf-8"
     )
-    model.fit(
-        train_ds,
-        validation_data=val_ds,
-        epochs=PHASE_1_EPOCHS,
-        class_weight=weights,
-        callbacks=callbacks,
-    )
-
-    base.trainable = True
-    for layer in base.layers[:-30]:
-        layer.trainable = False
-
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-    model.fit(
-        train_ds,
-        validation_data=val_ds,
-        epochs=PHASE_2_EPOCHS,
-        class_weight=weights,
-        callbacks=callbacks,
-    )
-
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    model.save(H5_MODEL_PATH)
-    model.save(KERAS_MODEL_PATH)
-    CLASS_INDEX_PATH.write_text(
-        json.dumps({class_name: index for index, class_name in enumerate(class_names)}, indent=2),
+    (MODEL_DIR / "model_meta.json").write_text(
+        json.dumps(
+            {
+                "framework": "pytorch",
+                "arch": args.arch,
+                "img_size": args.img_size,
+                "mean": IMAGENET_MEAN,
+                "std": IMAGENET_STD,
+                "resize_ratio": 1.14,
+                "num_classes": len(class_names),
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
+    (MODEL_DIR / "eval_report.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    save_confusion_matrix(matrix, class_names, MODEL_DIR / "confusion_matrix.png")
 
-    eval_report = evaluate_and_save(model, test_ds, class_names)
-    print(json.dumps(eval_report, indent=2))
-    if eval_report["accuracy"] < MIN_TEST_ACCURACY:
+    print(f"Test accuracy : {payload['test_accuracy']:.4f}")
+    print(f"Test macro F1 : {payload['test_macro_f1']:.4f}")
+    print(f"Saved to      : {MODEL_DIR}")
+
+    if payload["test_accuracy"] < args.min_accuracy:
         raise SystemExit(
-            f"Test accuracy {eval_report['accuracy']:.3f} is below required {MIN_TEST_ACCURACY:.3f}. "
-            "Review dataset quality before using this model."
+            f"Test accuracy {payload['test_accuracy']:.3f} below required {args.min_accuracy:.3f}."
         )
 
 
 if __name__ == "__main__":
-    train()
+    sys.exit(main())
