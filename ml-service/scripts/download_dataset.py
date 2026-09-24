@@ -30,7 +30,7 @@ RAW_DIR = BASE_DIR / "data" / "raw"
 DEFAULT_REPO = "mr-rxa/Cattle-Buffalo-Datatset"
 
 
-def download(repo_id: str, dest: Path, attempts: int = 6) -> Path:
+def download(repo_id: str, dest: Path, allow_patterns: list[str], attempts: int = 6) -> Path:
     # The Hub's xet CAS backend intermittently drops connections on large
     # snapshots. Plain HTTP transfer is slower but far more reliable here.
     os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
@@ -54,11 +54,11 @@ def download(repo_id: str, dest: Path, attempts: int = 6) -> Path:
                 repo_id=repo_id,
                 repo_type="dataset",
                 local_dir=str(dest),
-                allow_patterns=["Dataset/Cattle Breeds/**", "Dataset/Buffalo Breeds/**"],
+                allow_patterns=allow_patterns,
                 max_workers=4,
             )
             return Path(local)
-        except (OSError, RuntimeError) as exc:
+        except Exception as exc:
             # snapshot_download resumes, so each retry starts from what is on disk.
             last_error = exc
             wait = min(30, 3 * attempt)
@@ -92,6 +92,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=DEFAULT_REPO, help="Hugging Face dataset repo id")
     parser.add_argument("--dest", default=str(RAW_DIR), help="Where to place raw images")
+    parser.add_argument(
+        "--group",
+        choices=("all", "cattle", "buffalo"),
+        default="all",
+        help="Download only one species group, useful when resuming over an unstable connection.",
+    )
     parser.add_argument("--force", action="store_true", help="Delete any existing download first")
     args = parser.parse_args()
 
@@ -107,7 +113,12 @@ def main() -> None:
         summarise(dest)
         return
 
-    root = download(args.repo, dest)
+    patterns = {
+        "all": ["Dataset/Cattle Breeds/**", "Dataset/Buffalo Breeds/**"],
+        "cattle": ["Dataset/Cattle Breeds/**"],
+        "buffalo": ["Dataset/Buffalo Breeds/**"],
+    }[args.group]
+    root = download(args.repo, dest, patterns)
     marker.write_text(args.repo, encoding="utf-8")
     summarise(root)
 

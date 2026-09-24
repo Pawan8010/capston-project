@@ -172,6 +172,16 @@ Artefacts land in `ml-service/models/`:
 **Read the confusion matrix before trusting the headline number.** Some breeds
 are genuinely hard to separate from a photo.
 
+If `torchvision` is not available on your Python/Windows setup, use the fallback
+trainer:
+
+```bash
+python ml-service/train_torchlite.py --epochs 10 --batch-size 16
+```
+
+It exports the same `breed_model.pt` file the backend loads, but the full
+`train.py` transfer-learning path is preferred for accuracy.
+
 ---
 
 ## 5. Run

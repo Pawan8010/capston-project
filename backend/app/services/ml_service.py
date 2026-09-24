@@ -55,6 +55,13 @@ except ImportError:  # pragma: no cover - environment guard
     logger.warning("PyTorch is not installed - the trained breed model cannot be loaded.")
 
 try:
+    from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
+
+    TORCHVISION_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional livestock gate
+    TORCHVISION_AVAILABLE = False
+
+try:
     import tensorflow as tf
 
     TF_AVAILABLE = True
@@ -95,6 +102,8 @@ class BreedPredictor:
         self.labels = self._load_labels()
         self.model = None
         self.gate_model = None
+        self.gate_preprocess = None
+        self.gate_categories = None
         self.mode = "model-missing"
         self.unavailable_reason = ""
 
@@ -227,10 +236,23 @@ class BreedPredictor:
     def _load_gate_model(self):
         if self.gate_model is not None:
             return self.gate_model
+        if TORCHVISION_AVAILABLE and TORCH_AVAILABLE:
+            try:
+                weights = MobileNet_V3_Small_Weights.DEFAULT
+                model = mobilenet_v3_small(weights=weights)
+                model.eval()
+                self.gate_model = ("torchvision", model)
+                self.gate_preprocess = weights.transforms()
+                self.gate_categories = weights.meta.get("categories", [])
+                return self.gate_model
+            except Exception as exc:  # pragma: no cover - external model/cache
+                logger.warning("TorchVision livestock gate unavailable: %s", exc)
+
         if not TF_AVAILABLE:
+            self.gate_model = False
             return None
         try:
-            self.gate_model = tf.keras.applications.MobileNetV2(weights="imagenet")
+            self.gate_model = ("tensorflow", tf.keras.applications.MobileNetV2(weights="imagenet"))
         except Exception as exc:  # pragma: no cover - external model/cache
             logger.warning("Livestock gate unavailable: %s", exc)
             self.gate_model = False
@@ -245,18 +267,35 @@ class BreedPredictor:
         if gate_model is None:
             return {"is_livestock": True, "status": "unavailable", "score": None}
 
+        matches = []
+        score = 0.0
+
         try:
-            arr = np.asarray(pil_image.convert("RGB").resize((224, 224)), dtype=np.float32)
-            arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
-            preds = gate_model.predict(arr[None, ...], verbose=0)
-            decoded = tf.keras.applications.mobilenet_v2.decode_predictions(preds, top=8)[0]
-        except Exception as exc:  # pragma: no cover - depends on TF cache/network
+            provider = gate_model[0] if isinstance(gate_model, tuple) else "tensorflow"
+            if provider == "torchvision":
+                _, model = gate_model
+                tensor = self.gate_preprocess(pil_image.convert("RGB")).unsqueeze(0)
+                with torch.no_grad():
+                    probs = torch.softmax(model(tensor), dim=1)[0]
+                top_probs, top_indices = torch.topk(probs, k=8)
+                decoded = [
+                    (self.gate_categories[int(idx)], float(prob))
+                    for prob, idx in zip(top_probs, top_indices)
+                ]
+            else:
+                _, model = gate_model
+                arr = np.asarray(pil_image.convert("RGB").resize((224, 224)), dtype=np.float32)
+                arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
+                preds = model.predict(arr[None, ...], verbose=0)
+                decoded = [
+                    (label, float(raw_score))
+                    for _, label, raw_score in tf.keras.applications.mobilenet_v2.decode_predictions(preds, top=8)[0]
+                ]
+        except Exception as exc:  # pragma: no cover - depends on model cache/network
             logger.warning("Livestock gate inference unavailable: %s", exc)
             return {"is_livestock": True, "status": "unavailable", "score": None}
 
-        matches = []
-        score = 0.0
-        for _, label, raw_score in decoded:
+        for label, raw_score in decoded:
             label_key = str(label).lower()
             item = {"label": label, "score": round(float(raw_score), 4)}
             if any(keyword in label_key for keyword in LIVESTOCK_IMAGENET_KEYWORDS):
@@ -273,7 +312,7 @@ class BreedPredictor:
             "matches": matches,
             "top_labels": [
                 {"label": label, "score": round(float(raw_score), 4)}
-                for _, label, raw_score in decoded[:5]
+                for label, raw_score in decoded[:5]
             ],
         }
 
@@ -311,6 +350,18 @@ class BreedPredictor:
 
         primary_conf = float(probs[primary_idx])
         secondary_conf = float(probs[secondary_idx]) if secondary_idx != primary_idx else 0.0
+        min_conf = float(settings.MIN_PREDICTION_CONFIDENCE)
+        if primary_conf < min_conf:
+            raise LivestockValidationError(
+                "Please upload a clear cow or buffalo photo. The image is too uncertain for a reliable livestock breed result.",
+                {
+                    **gate,
+                    "status": "low_confidence",
+                    "score": round(primary_conf, 4),
+                    "threshold": min_conf,
+                },
+            )
+
         total = primary_conf + secondary_conf
         crossbreed_ratio = round(secondary_conf / total, 3) if total > 0 else 0.0
 

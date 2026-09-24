@@ -31,6 +31,15 @@ def assert_prediction_shape(data: dict) -> None:
     assert data["inference_ms"] >= 0
 
 
+def assert_not_livestock_response(response) -> bool:
+    if response.status_code != 400:
+        return False
+    detail = response.json().get("detail", {})
+    assert detail.get("error") == "not_livestock"
+    assert "message" in detail
+    return True
+
+
 def test_health_endpoint_reports_predictor_state():
     with TestClient(app) as client:
         response = client.get("/health")
@@ -67,6 +76,8 @@ def test_predict_endpoint_accepts_image_without_external_services():
     # to invent a breed rather than returning a fake one.
     if response.status_code == 503:
         assert "train" in response.json()["detail"].lower()
+        return
+    if assert_not_livestock_response(response):
         return
 
     assert response.status_code == 200
@@ -106,6 +117,8 @@ def test_realtime_endpoint_returns_same_shape():
 
     if response.status_code == 503:
         assert "train" in response.json()["detail"].lower()
+        return
+    if assert_not_livestock_response(response):
         return
 
     assert response.status_code == 200
