@@ -186,6 +186,9 @@ export const logout = async () => {
  * Send password reset email
  */
 export const resetPassword = async (email) => {
+  if (shouldUseLocalAuth()) {
+    return true;
+  }
   await sendPasswordResetEmail(auth, email);
 };
 
@@ -222,7 +225,12 @@ export const onAuthChange = (callback) => {
     callback(firebaseUser || getDemoUser());
   };
 
-  const unsubscribeFirebase = onAuthStateChanged(auth, emit);
+  let unsubscribeFirebase = () => {};
+  try {
+    unsubscribeFirebase = onAuthStateChanged(auth, emit);
+  } catch {
+    emit(null);
+  }
   const handleDemoChange = () => emit(auth.currentUser);
   window.addEventListener("demo-auth-change", handleDemoChange);
 
