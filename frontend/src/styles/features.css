@@ -623,7 +623,11 @@
   transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
-.navbar__link:hover { color: var(--text); background: var(--surface-hover); }
+.navbar__link:hover {
+  color: var(--brand-text);
+  background: var(--brand-subtle);
+  box-shadow: inset 0 0 0 1px var(--brand-border);
+}
 
 .footer {
   padding: var(--space-16) 0 var(--space-8);
