@@ -124,11 +124,17 @@ export default function CameraScanner({ onCapture, onTelemetry }) {
       onCapture?.(result, b64);
       publishTelemetry({ scanning: false, latencyMs: elapsed, lastScanAt: now });
     } catch (err) {
-      setError(
-        err?.response?.status === 503
-          ? "No model is loaded on the server, so live scanning cannot identify anything."
-          : "Prediction failed. Check that the backend is running."
-      );
+      const detail = err?.response?.data?.detail;
+      if (detail?.error === "not_livestock") {
+        setPrediction(null);
+        setError(detail.message || "Frame skipped: please point the scanner at a cow, calf, bull, or buffalo.");
+      } else {
+        setError(
+          err?.response?.status === 503
+            ? "No model is loaded on the server, so live scanning cannot identify anything."
+            : "Prediction failed. Check that the backend is running."
+        );
+      }
     } finally {
       inFlightRef.current = false;
       if (mountedRef.current) setScanning(false);
@@ -183,7 +189,7 @@ export default function CameraScanner({ onCapture, onTelemetry }) {
             <p style={{ fontWeight: "var(--weight-semibold)", color: "var(--gray-200)" }}>
               Camera is off
             </p>
-            <p className="text-sm">Start the scanner to identify animals as you frame them.</p>
+            <p className="text-sm">Start the scanner and frame only a cow, calf, bull, or buffalo.</p>
           </div>
         )}
 

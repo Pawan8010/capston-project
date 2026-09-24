@@ -17,6 +17,16 @@ from __future__ import annotations
 # ── Cattle (Bos indicus) ────────────────────────────────────────────────────
 
 _CATTLE: dict[str, dict] = {
+    "Crossbreed": {
+        "milk_yield": "Varies by parent breeds and management",
+        "climate": "Depends on the cross; often selected for local adaptability",
+        "origin": "Mixed cattle lineage",
+        "feed": "Balanced green fodder, dry fodder, minerals, and concentrate based on milk yield",
+        "disease_risks": ["Mastitis", "FMD", "Tick-borne disease", "Heat stress"],
+        "best_for": "Combining local hardiness with improved milk productivity",
+        "avg_weight_kg": "varies",
+        "lactation_days": "varies",
+    },
     "Gir": {
         "milk_yield": "10-15 litres/day",
         "climate": "Hot, semi-arid",

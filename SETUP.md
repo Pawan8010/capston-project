@@ -61,6 +61,9 @@ copy frontend\.env.example frontend\.env
 | `ADMIN_EMAILS` | *(empty)* | Comma-separated emails that get the admin role |
 | `OPENAI_API_KEY` | *(empty)* | Empty → rule-based assistant |
 | `BLUR_THRESHOLD` | `100.0` | Laplacian-variance floor for rejecting blurry uploads |
+| `LIVESTOCK_GATE_ENABLED` | `true` | Reject obvious non-cow/non-buffalo images before breed classification |
+| `LIVESTOCK_GATE_REALTIME_ENABLED` | `true` | Apply the same livestock check to webcam frames |
+| `LIVESTOCK_GATE_THRESHOLD` | `0.12` | ImageNet livestock score required by the gate |
 | `MODEL_PATH` | `ml-service/models/breed_model.pt` | Written by `train.py` |
 
 `frontend/.env` holds the Firebase web config. The shipped values point at an
@@ -109,6 +112,7 @@ This step is what makes the accuracy number mean anything:
   breed under both `<Group> Breeds/` and `<Group> Images/`, and the same photo
   appears at different sizes and JPEG qualities
 - drops breeds with fewer than 40 photos (`--min-images`)
+- keeps `Crossbreed` only when at least 1000 deduplicated images are available
 - writes a stratified `train`/`val`/`test` split with a fixed seed
 
 Without the de-duplication, copies of one photo end up in both train and test and
@@ -122,6 +126,10 @@ python ml-service/scripts/prepare_dataset.py --min-images 80
 
 Output goes to `ml-service/data/{train,val,test}/<Class>/`, plus
 `dataset_manifest.csv` recording where every kept image came from.
+
+For Crossbreed training, place at least 1000 real crossbreed cattle images under
+a raw folder named `Crossbreed`, `Cross Breed`, or `Crossbred`; the cleaner maps
+those names to one `Crossbreed` class.
 
 ### 4.3 Train
 

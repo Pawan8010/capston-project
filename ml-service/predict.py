@@ -35,7 +35,7 @@ for _stream in (sys.stdout, sys.stderr):
 # Reuse the backend implementation rather than duplicating it here.
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.services.ml_service import BreedPredictor, ModelUnavailableError  # noqa: E402
+from app.services.ml_service import BreedPredictor, LivestockValidationError, ModelUnavailableError  # noqa: E402
 from app.services.breed_info import get_breed_info  # noqa: E402
 
 
@@ -79,6 +79,10 @@ def main() -> int:
 
         try:
             result = predictor.predict(path.read_bytes())
+        except LivestockValidationError as exc:
+            print(f"{path}: {exc}", file=sys.stderr)
+            exit_code = 1
+            continue
         except (ModelUnavailableError, ValueError) as exc:
             print(f"{path}: {exc}", file=sys.stderr)
             exit_code = 1

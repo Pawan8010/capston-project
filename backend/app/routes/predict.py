@@ -4,7 +4,7 @@ Accepts a livestock image and returns breed prediction results.
 """
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from app.services.ml_service import get_predictor, BreedPredictor, ModelUnavailableError
+from app.services.ml_service import get_predictor, BreedPredictor, ModelUnavailableError, LivestockValidationError
 from app.services.mongo_service import save_prediction
 from app.security import verify_token
 from app.utils.image_quality import check_image_sharpness
@@ -48,6 +48,15 @@ async def predict(
     start = time.perf_counter()
     try:
         result = predictor.predict(contents)
+    except LivestockValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "not_livestock",
+                "message": str(exc),
+                "livestock_gate": exc.gate_result,
+            },
+        )
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     inference_ms = round((time.perf_counter() - start) * 1000, 2)

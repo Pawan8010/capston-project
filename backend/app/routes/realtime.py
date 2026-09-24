@@ -8,10 +8,11 @@ from io import BytesIO
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
-from app.services.ml_service import get_predictor, BreedPredictor, ModelUnavailableError
+from app.services.ml_service import get_predictor, BreedPredictor, ModelUnavailableError, LivestockValidationError
 from app.security import verify_token
 from app.services.breed_info import get_breed_info
 from app.services.mongo_service import save_prediction
+from app.core.config import settings
 import time
 
 router = APIRouter()
@@ -49,7 +50,24 @@ async def realtime_predict(
     try:
         start = time.perf_counter()
         try:
-            result = predictor.predict(img_bytes)
+            if not settings.LIVESTOCK_GATE_REALTIME_ENABLED:
+                original_gate = settings.LIVESTOCK_GATE_ENABLED
+                settings.LIVESTOCK_GATE_ENABLED = False
+                try:
+                    result = predictor.predict(img_bytes)
+                finally:
+                    settings.LIVESTOCK_GATE_ENABLED = original_gate
+            else:
+                result = predictor.predict(img_bytes)
+        except LivestockValidationError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "not_livestock",
+                    "message": str(exc),
+                    "livestock_gate": exc.gate_result,
+                },
+            )
         except ModelUnavailableError as exc:
             raise HTTPException(status_code=503, detail=str(exc))
         result["inference_ms"] = round((time.perf_counter() - start) * 1000, 2)

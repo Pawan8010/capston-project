@@ -27,11 +27,24 @@ import numpy as np
 from fastapi import Request
 from PIL import Image
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_LABELS = ["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
+DEFAULT_LABELS = ["Crossbreed", "Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"]
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+LIVESTOCK_IMAGENET_KEYWORDS = (
+    "ox",
+    "bull",
+    "cow",
+    "calf",
+    "cattle",
+    "water_buffalo",
+    "buffalo",
+    "bison",
+    "yak",
+)
 
 try:
     import torch
@@ -51,6 +64,14 @@ except ImportError:
 
 class ModelUnavailableError(RuntimeError):
     """Raised when a real trained model is required but not available."""
+
+
+class LivestockValidationError(ValueError):
+    """Raised when the image does not appear to contain supported livestock."""
+
+    def __init__(self, message: str, gate_result: dict):
+        super().__init__(message)
+        self.gate_result = gate_result
 
 
 TRAIN_HINT = (
@@ -73,6 +94,7 @@ class BreedPredictor:
 
         self.labels = self._load_labels()
         self.model = None
+        self.gate_model = None
         self.mode = "model-missing"
         self.unavailable_reason = ""
 
@@ -202,6 +224,59 @@ class BreedPredictor:
 
         raise ModelUnavailableError(f"{self.unavailable_reason} {TRAIN_HINT}")
 
+    def _load_gate_model(self):
+        if self.gate_model is not None:
+            return self.gate_model
+        if not TF_AVAILABLE:
+            return None
+        try:
+            self.gate_model = tf.keras.applications.MobileNetV2(weights="imagenet")
+        except Exception as exc:  # pragma: no cover - external model/cache
+            logger.warning("Livestock gate unavailable: %s", exc)
+            self.gate_model = False
+        return self.gate_model if self.gate_model is not False else None
+
+    def validate_livestock(self, pil_image: Image.Image) -> dict:
+        """Use an ImageNet MobileNet gate to reject obvious non-cattle images."""
+        if not settings.LIVESTOCK_GATE_ENABLED:
+            return {"is_livestock": True, "status": "disabled", "score": None}
+
+        gate_model = self._load_gate_model()
+        if gate_model is None:
+            return {"is_livestock": True, "status": "unavailable", "score": None}
+
+        try:
+            arr = np.asarray(pil_image.convert("RGB").resize((224, 224)), dtype=np.float32)
+            arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
+            preds = gate_model.predict(arr[None, ...], verbose=0)
+            decoded = tf.keras.applications.mobilenet_v2.decode_predictions(preds, top=8)[0]
+        except Exception as exc:  # pragma: no cover - depends on TF cache/network
+            logger.warning("Livestock gate inference unavailable: %s", exc)
+            return {"is_livestock": True, "status": "unavailable", "score": None}
+
+        matches = []
+        score = 0.0
+        for _, label, raw_score in decoded:
+            label_key = str(label).lower()
+            item = {"label": label, "score": round(float(raw_score), 4)}
+            if any(keyword in label_key for keyword in LIVESTOCK_IMAGENET_KEYWORDS):
+                matches.append(item)
+                score += float(raw_score)
+
+        threshold = float(settings.LIVESTOCK_GATE_THRESHOLD)
+        is_livestock = score >= threshold
+        return {
+            "is_livestock": is_livestock,
+            "status": "checked",
+            "score": round(score, 4),
+            "threshold": threshold,
+            "matches": matches,
+            "top_labels": [
+                {"label": label, "score": round(float(raw_score), 4)}
+                for _, label, raw_score in decoded[:5]
+            ],
+        }
+
     def predict(self, image_bytes: bytes) -> dict:
         """Run breed classification on raw image bytes."""
         if self.model is None:
@@ -212,6 +287,13 @@ class BreedPredictor:
             pil_image.load()
         except Exception as exc:
             raise ValueError(f"Could not decode image: {exc}") from exc
+
+        gate = self.validate_livestock(pil_image)
+        if not gate.get("is_livestock", True):
+            raise LivestockValidationError(
+                "Please upload a clear photo containing only a cow, bull, calf, or buffalo.",
+                gate,
+            )
 
         probs = self._probabilities(pil_image)
 
@@ -249,6 +331,7 @@ class BreedPredictor:
             "confidence_format": "percent",
             "model_mode": self.mode,
             "model_arch": self.meta.get("arch"),
+            "livestock_gate": gate,
         }
 
 

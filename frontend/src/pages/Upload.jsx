@@ -33,7 +33,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 
 const PHOTO_TIPS = [
   { icon: SunMedium, title: "Bright, even light", text: "Daylight works best. Avoid deep shade and strong backlight." },
-  { icon: Target, title: "Whole animal in frame", text: "Side-on, full body. Hump, horns and dewlap carry most of the signal." },
+  { icon: Target, title: "Only livestock in frame", text: "Use a clear cow, bull, calf, or buffalo photo. Other images are rejected." },
   { icon: ShieldCheck, title: "Hold steady", text: "Motion blur is the most common reason a photo gets rejected." },
 ];
 
@@ -158,6 +158,8 @@ export default function UploadPage() {
       const detail = err?.response?.data?.detail;
       if (detail?.error === "image_too_blurry") {
         setError("That image is too blurry to classify. Try better light or a steadier shot.");
+      } else if (detail?.error === "not_livestock") {
+        setError(detail.message || "Please upload an image that clearly contains a cow, bull, calf, or buffalo.");
       } else if (err?.response?.status === 503) {
         setError("No model is loaded on the server yet, so no breed can be predicted.");
       } else {
@@ -173,7 +175,7 @@ export default function UploadPage() {
       <PageHeader
         eyebrow="Breed analysis"
         title="Identify a breed from a photo"
-        subtitle="Upload a clear image and the model returns the breed, its confidence, a crossbreed reading and husbandry guidance."
+        subtitle="Upload a clear cow or buffalo image. The model rejects non-livestock photos and returns breed, confidence, crossbreed reading and guidance."
         actions={
           <>
             <Button to="/camera" variant="secondary" icon={Camera}>
@@ -300,7 +302,7 @@ export default function UploadPage() {
           <Card>
             <CardHeader
               title="Breeds this model knows"
-              subtitle="Read live from the loaded model"
+            subtitle="Read live from the loaded model, including Crossbreed when trained"
               actions={<Cpu size={16} style={{ color: "var(--text-muted)" }} aria-hidden="true" />}
             />
             <CardBody>

@@ -62,6 +62,18 @@ CANONICAL_OVERRIDES = {
     "Ongole_Dwarf_(Kavali)": "Ongole_Dwarf",
 }
 
+CROSSBREED_ALIASES = {
+    "cross",
+    "cross_breed",
+    "crossbreed",
+    "crossbred",
+    "mixed",
+    "mixed_breed",
+    "cattle_crossbreed",
+    "buffalo_crossbreed",
+}
+MIN_IMAGES_BY_CLASS = {"Crossbreed": 1000}
+
 # Matched case-insensitively: str.capitalize() lowercases anything after a
 # leading punctuation character, so "(Kavali)" arrives as "(kavali)" and an
 # exact-case lookup would silently miss.
@@ -74,6 +86,8 @@ def canonical_class(group: str, breed: str) -> str:
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
     cleaned = "_".join(part.capitalize() for part in cleaned.split("_"))
     cleaned = _OVERRIDES_CI.get(cleaned.lower(), cleaned)
+    if cleaned.lower() in CROSSBREED_ALIASES:
+        return "Crossbreed"
     return f"{group}_{cleaned}"
 
 
@@ -140,16 +154,26 @@ def write_split(
     test_frac: float,
 ) -> tuple[list[str], list[dict]]:
     rng = random.Random(seed)
-    kept = {name: items for name, items in buckets.items() if len(items) >= min_images}
+    kept = {
+        name: items
+        for name, items in buckets.items()
+        if len(items) >= MIN_IMAGES_BY_CLASS.get(name, min_images)
+    }
     dropped = sorted(
-        ((name, len(items)) for name, items in buckets.items() if len(items) < min_images),
+        (
+            (name, len(items), MIN_IMAGES_BY_CLASS.get(name, min_images))
+            for name, items in buckets.items()
+            if len(items) < MIN_IMAGES_BY_CLASS.get(name, min_images)
+        ),
         key=lambda item: -item[1],
     )
 
     print(f"\nKeeping {len(kept)} classes with >= {min_images} images.")
     if dropped:
-        preview = ", ".join(f"{name}({count})" for name, count in dropped[:8])
+        preview = ", ".join(f"{name}({count}/{needed})" for name, count, needed in dropped[:8])
         print(f"Dropping {len(dropped)} sparse classes: {preview}{' ...' if len(dropped) > 8 else ''}")
+    if "Crossbreed" not in kept:
+        print("Crossbreed requires at least 1000 deduplicated images. Add them under a crossbreed raw folder and rerun.")
 
     for split in SPLITS:
         target = DATA_DIR / split

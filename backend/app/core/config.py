@@ -20,9 +20,11 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = str(BACKEND_DIR / "firebase-adminsdk.json")
     BLUR_THRESHOLD: float = 100.0
     AUTH_ALLOW_MOCK: bool = False
-
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    LIVESTOCK_GATE_ENABLED: bool = True
+    LIVESTOCK_GATE_REALTIME_ENABLED: bool = True
+    LIVESTOCK_GATE_THRESHOLD: float = 0.12
 
     # Comma-separated emails granted the admin role on first sync.
     ADMIN_EMAILS: str = ""
