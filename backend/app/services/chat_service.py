@@ -36,21 +36,18 @@ def rule_based_response(text: str, language: str = "en", breed: str | None = Non
 
 class ChatService:
     def __init__(self, client: Any | None = None, api_key: str | None = None, model: str | None = None):
-        self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.client = client
-
-    def _client(self):
-        if self.client is not None:
-            return self.client
-        if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY is not configured")
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("openai package is not installed") from exc
-        self.client = OpenAI(api_key=self.api_key, timeout=15)
-        return self.client
+        self.api_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        
+        if self.api_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key)
+                self.client = genai.GenerativeModel(self.model)
+            except ImportError:
+                self.client = None
+        else:
+            self.client = None
 
     def _system_prompt(self, breed: str | None) -> str:
         supported = ", ".join(["Gir", "Holstein", "Jersey", "Red_Sindhi", "Sahiwal"])
@@ -66,29 +63,27 @@ class ChatService:
         )
 
     def answer(self, text: str, language: str = "en", breed: str | None = None, history: list[dict] | None = None) -> str:
-        client = self._client()
-        safe_history = []
+        if not self.client:
+            raise RuntimeError("Gemini client not initialized. Check API key and google-generativeai installation.")
+        
+        system_instruction = self._system_prompt(breed)
+        
+        # Format history for Gemini
+        formatted_history = []
         for item in (history or [])[-10:]:
             role = item.get("role")
             content = item.get("content")
             if role in {"user", "assistant"} and isinstance(content, str):
-                safe_history.append({"role": role, "content": content[:1200]})
-
-        messages = [
-            {"role": "system", "content": self._system_prompt(breed)},
-            *safe_history,
-            {
-                "role": "user",
-                "content": f"Language hint: {language}. User question: {text}",
-            },
-        ]
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0.3,
-            max_tokens=420,
-        )
-        return response.choices[0].message.content.strip()
+                formatted_role = "model" if role == "assistant" else "user"
+                formatted_history.append({"role": formatted_role, "parts": [content[:1200]]})
+        
+        try:
+            chat_session = self.client.start_chat(history=formatted_history)
+            prompt = f"System Rules: {system_instruction}\n\nLanguage hint: {language}\nUser question: {text}"
+            response = chat_session.send_message(prompt)
+            return response.text.strip()
+        except Exception as e:
+            raise RuntimeError(f"Gemini API Error: {str(e)}")
 
 
 def answer_with_fallback(
@@ -100,7 +95,7 @@ def answer_with_fallback(
 ) -> tuple[str, str]:
     chat = service or ChatService()
     try:
-        return chat.answer(text=text, language=language, breed=breed, history=history), "openai"
+        return chat.answer(text=text, language=language, breed=breed, history=history), "gemini"
     except Exception as exc:
-        logger.warning("OpenAI chat unavailable, using rule-based fallback: %s", exc)
+        logger.warning("Gemini chat unavailable, using rule-based fallback: %s", exc)
         return rule_based_response(text=text, language=language, breed=breed), "fallback"
