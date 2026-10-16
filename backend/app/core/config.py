@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     LIVESTOCK_GATE_ENABLED: bool = True
     LIVESTOCK_GATE_REALTIME_ENABLED: bool = True
     LIVESTOCK_GATE_THRESHOLD: float = 0.12
-    MIN_PREDICTION_CONFIDENCE: float = 0.18
+    # A closed-set breed classifier must not turn a weak best-match into a
+    # confident-looking breed result. Values below this are livestock, but
+    # outside the reliably supported training distribution.
+    MIN_PREDICTION_CONFIDENCE: float = 0.75
 
     # Comma-separated emails granted the admin role on first sync.
     ADMIN_EMAILS: str = ""

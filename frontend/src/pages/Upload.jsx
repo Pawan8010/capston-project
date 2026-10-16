@@ -158,6 +158,11 @@ export default function UploadPage() {
       const detail = err?.response?.data?.detail;
       if (detail?.error === "image_too_blurry") {
         setError("That image is too blurry to classify. Try better light or a steadier shot.");
+      } else if (detail?.error === "unsupported_breed") {
+        setError(
+          "This looks like livestock, but its breed is outside the model's reliable training set. " +
+          "It was not saved as a prediction."
+        );
       } else if (detail?.error === "not_livestock") {
         setError(detail.message || "Please upload an image that clearly contains a cow, bull, calf, or buffalo.");
       } else if (err?.response?.status === 503) {

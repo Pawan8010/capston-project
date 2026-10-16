@@ -37,9 +37,16 @@ export default function MyHerd() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getPredictionHistory({ limit: 200 }), getBreeds().catch(() => null)])
-      .then(([historyData, breedData]) => {
+    Promise.allSettled([getPredictionHistory({ limit: 200 }), getBreeds()])
+      .then(([historyRequest, breedsRequest]) => {
         if (cancelled) return;
+        if (historyRequest.status !== "fulfilled") {
+          setError("Could not load your herd. Check that the LivestockAI API is running, then refresh this page.");
+          return;
+        }
+
+        const historyData = historyRequest.value;
+        const breedData = breedsRequest.status === "fulfilled" ? breedsRequest.value : null;
         setHistory(historyData.predictions || []);
         const table = {};
         (breedData?.breeds || []).forEach((breed) => {
@@ -48,7 +55,7 @@ export default function MyHerd() {
         setBreedInfo(table);
         setError("");
       })
-      .catch(() => !cancelled && setError("Could not load your herd."))
+      .catch(() => !cancelled && setError("Could not load your herd. Check that the LivestockAI API is running, then refresh this page."))
       .finally(() => !cancelled && setLoading(false));
 
     return () => {

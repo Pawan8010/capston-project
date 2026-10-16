@@ -60,12 +60,20 @@ async def realtime_predict(
             else:
                 result = predictor.predict(img_bytes)
         except LivestockValidationError as exc:
+            gate = exc.gate_result
+            low_confidence = gate.get("status") == "low_confidence"
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "error": "not_livestock",
-                    "message": str(exc),
-                    "livestock_gate": exc.gate_result,
+                    "error": "unsupported_breed" if low_confidence else "not_livestock",
+                    "message": (
+                        "This appears to be livestock, but the model cannot identify its breed reliably. "
+                        "Move closer, keep one animal in frame, or use a supported breed."
+                        if low_confidence
+                        else str(exc)
+                    ),
+                    "livestock_gate": gate,
+                    "supported_breeds": predictor.labels if low_confidence else None,
                 },
             )
         except ModelUnavailableError as exc:
