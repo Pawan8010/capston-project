@@ -147,8 +147,9 @@
 }
 .btn--primary:hover:not(:disabled) {
   --btn-bg: var(--brand-hover);
-  --btn-border: color-mix(in srgb, var(--brand-hover) 88%, #ffffff 12%);
-  box-shadow: var(--shadow-brand);
+  --btn-fg: #ffffff;
+  --btn-border: var(--brand-active);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--brand) 34%, transparent);
 }
 .btn--primary:active:not(:disabled) { --btn-bg: var(--brand-active); }
 
@@ -159,10 +160,10 @@
   box-shadow: var(--shadow-xs);
 }
 .btn--secondary:hover:not(:disabled) {
-  --btn-bg: var(--brand-subtle);
-  --btn-fg: var(--brand-text);
-  --btn-border: var(--brand-border);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--brand) 16%, transparent);
+  --btn-bg: var(--brand);
+  --btn-fg: #ffffff;
+  --btn-border: var(--brand);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--brand) 26%, transparent);
 }
 
 .btn--ghost { --btn-fg: var(--text-secondary); }
