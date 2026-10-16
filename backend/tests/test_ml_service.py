@@ -2,11 +2,17 @@ import json
 from io import BytesIO
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw, ImageFilter
 
 from app.services.breed_info import get_breed_info
-from app.services.ml_service import DEFAULT_LABELS, BreedPredictor, ModelUnavailableError
+from app.services.ml_service import (
+    DEFAULT_LABELS,
+    BreedPredictor,
+    LivestockValidationError,
+    ModelUnavailableError,
+)
 from app.utils.image_quality import check_image_sharpness
 
 
@@ -76,6 +82,27 @@ def test_predictor_reads_preprocessing_meta(tmp_path):
 
     assert predictor.img_size == 260
     assert predictor.meta["arch"] == "resnet50"
+
+
+def test_low_confidence_error_keeps_closest_candidate(monkeypatch, tmp_path):
+    predictor = BreedPredictor(
+        model_path=str(tmp_path / "missing.pt"),
+        class_index_path=str(tmp_path / "labels.json"),
+    )
+    (tmp_path / "labels.json").write_text(json.dumps(["Cattle_Gir", "Cattle_Sahiwal"]), encoding="utf-8")
+    predictor.labels = ["Cattle_Gir", "Cattle_Sahiwal"]
+    predictor.model = object()
+    predictor.mode = "pytorch"
+    monkeypatch.setattr(predictor, "validate_livestock", lambda image: {"is_livestock": True, "status": "checked"})
+    monkeypatch.setattr(predictor, "_probabilities", lambda image: np.array([0.6, 0.4], dtype=np.float32))
+
+    with pytest.raises(LivestockValidationError) as raised:
+        predictor.predict(image_bytes(size=(256, 256)))
+
+    gate = raised.value.gate_result
+    assert gate["status"] == "low_confidence"
+    assert gate["closest_candidate"] == "Cattle_Gir"
+    assert gate["top_predictions"][0]["breed"] == "Cattle_Gir"
 
 
 def test_preprocess_emits_normalised_nchw_tensor(tmp_path):

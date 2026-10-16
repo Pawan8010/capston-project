@@ -350,6 +350,11 @@ class BreedPredictor:
 
         primary_conf = float(probs[primary_idx])
         secondary_conf = float(probs[secondary_idx]) if secondary_idx != primary_idx else 0.0
+        probability_map = {labels[i]: round(float(probs[i]) * 100, 2) for i in range(len(probs))}
+        top_predictions = [
+            {"breed": labels[int(i)], "confidence": round(float(probs[int(i)]) * 100, 2)}
+            for i in order[:5]
+        ]
         min_conf = float(settings.MIN_PREDICTION_CONFIDENCE)
         if primary_conf < min_conf:
             raise LivestockValidationError(
@@ -359,17 +364,14 @@ class BreedPredictor:
                     "status": "low_confidence",
                     "score": round(primary_conf, 4),
                     "threshold": min_conf,
+                    "closest_candidate": labels[primary_idx],
+                    "closest_confidence": round(primary_conf * 100, 2),
+                    "top_predictions": top_predictions,
                 },
             )
 
         total = primary_conf + secondary_conf
         crossbreed_ratio = round(secondary_conf / total, 3) if total > 0 else 0.0
-
-        probability_map = {labels[i]: round(float(probs[i]) * 100, 2) for i in range(len(probs))}
-        top_predictions = [
-            {"breed": labels[int(i)], "confidence": round(float(probs[int(i)]) * 100, 2)}
-            for i in order[:5]
-        ]
 
         return {
             "primary_breed": labels[primary_idx],

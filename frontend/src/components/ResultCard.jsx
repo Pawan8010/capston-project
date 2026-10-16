@@ -18,6 +18,8 @@ export default function ResultCard({ result }) {
   if (isAssessment) {
     const isLivestock = result.analysis_status === "unsupported_breed";
     const visualSignals = result.livestock_gate?.top_labels || [];
+    const closestMatch = result.closest_candidate;
+    const candidatePredictions = result.top_predictions || [];
 
     return (
       <div className="stack stack--6">
@@ -48,6 +50,43 @@ export default function ResultCard({ result }) {
             </div>
           </CardBody>
         </Card>
+
+        {isLivestock && closestMatch && (
+          <Card>
+            <CardHeader
+              title="Closest trained match"
+              subtitle="A comparison only, not a confirmed breed result"
+            />
+            <CardBody>
+              <div className="stack stack--4">
+                <div className="result-hero">
+                  <div>
+                    <p className="eyebrow">Unverified candidate</p>
+                    <h3 className="result-hero__breed" style={{ fontSize: "var(--text-2xl)" }}>
+                      {formatBreed(closestMatch)}
+                    </h3>
+                  </div>
+                  <Badge tone="warning">
+                    {Number(result.closest_confidence || 0).toFixed(1)}% closest-match score
+                  </Badge>
+                </div>
+                {candidatePredictions.length > 1 && (
+                  <div className="prediction-list">
+                    {candidatePredictions.slice(1).map((candidate) => (
+                      <div key={candidate.breed} className="prediction">
+                        <span className="prediction__name">{formatBreed(candidate.breed)}</span>
+                        <span className="prediction__pct">{Number(candidate.confidence).toFixed(1)}%</span>
+                        <div className="prediction__track">
+                          <Progress value={Math.min(100, Number(candidate.confidence) || 0)} size="sm" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        )}
 
         {visualSignals.length > 0 && (
           <Card>

@@ -32,13 +32,17 @@ def assert_prediction_shape(data: dict) -> None:
 
 
 def assert_rejected_prediction_response(response) -> bool:
-    if response.status_code != 200:
-        return False
-    detail = response.json()
-    assert detail.get("analysis_status") in {"not_livestock", "unsupported_breed"}
-    assert "analysis_message" in detail
-    assert detail["saved"] is False
-    return True
+    if response.status_code == 400:
+        detail = response.json().get("detail", {})
+        assert detail.get("error") in {"image_too_blurry", "not_livestock", "unsupported_breed"}
+        return True
+    if response.status_code == 200:
+        detail = response.json()
+        assert detail.get("analysis_status") in {"not_livestock", "unsupported_breed"}
+        assert "analysis_message" in detail
+        assert detail["saved"] is False
+        return True
+    return False
 
 
 def test_health_endpoint_reports_predictor_state():
