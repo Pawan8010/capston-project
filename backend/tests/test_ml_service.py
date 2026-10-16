@@ -3,16 +3,32 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 from app.services.breed_info import get_breed_info
 from app.services.ml_service import DEFAULT_LABELS, BreedPredictor, ModelUnavailableError
+from app.utils.image_quality import check_image_sharpness
 
 
 def image_bytes(color=(180, 120, 80), size=(64, 64)) -> bytes:
     buf = BytesIO()
     Image.new("RGB", size, color).save(buf, format="PNG")
     return buf.getvalue()
+
+
+def test_blurry_photo_is_rejected_by_quality_gate():
+    image = Image.new("RGB", (512, 512), "white")
+    draw = ImageDraw.Draw(image)
+    for x in range(0, 512, 16):
+        draw.rectangle((x, 0, x + 7, 511), fill="black")
+
+    sharp = BytesIO()
+    image.save(sharp, format="PNG")
+    blurred = BytesIO()
+    image.filter(ImageFilter.GaussianBlur(radius=8)).save(blurred, format="PNG")
+
+    assert check_image_sharpness(sharp.getvalue())["is_sharp"]
+    assert not check_image_sharpness(blurred.getvalue())["is_sharp"]
 
 
 def test_predictor_reports_missing_model_without_guessing(tmp_path):

@@ -13,6 +13,7 @@ from app.security import verify_token
 from app.services.breed_info import get_breed_info
 from app.services.mongo_service import save_prediction
 from app.core.config import settings
+from app.utils.image_quality import check_image_sharpness
 import time
 
 router = APIRouter()
@@ -46,6 +47,18 @@ async def realtime_predict(
         img_bytes = base64.b64decode(b64_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image data: {str(e)}")
+
+    quality = check_image_sharpness(img_bytes)
+    if not quality["is_sharp"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "image_too_blurry",
+                "message": "Frame skipped because it is too blurry. Hold the camera steady and move closer to the animal.",
+                "sharpness_score": quality["score"],
+                "required_minimum": quality["threshold"],
+            },
+        )
 
     try:
         start = time.perf_counter()

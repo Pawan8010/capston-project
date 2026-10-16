@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     MODEL_META_PATH: str = str(REPO_ROOT / "ml-service" / "models" / "model_meta.json")
 
     FIREBASE_CREDENTIALS_PATH: str = str(BACKEND_DIR / "firebase-adminsdk.json")
-    BLUR_THRESHOLD: float = 100.0
+    # Laplacian variance below this means the image does not retain enough
+    # edge detail for a trustworthy breed classification.
+    BLUR_THRESHOLD: float = 250.0
     AUTH_ALLOW_MOCK: bool = False
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"

@@ -125,7 +125,13 @@ export default function CameraScanner({ onCapture, onTelemetry }) {
       publishTelemetry({ scanning: false, latencyMs: elapsed, lastScanAt: now });
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      if (detail?.error === "not_livestock") {
+      if (detail?.error === "image_too_blurry") {
+        setPrediction(null);
+        setError("Frame skipped: it is too blurry. Hold the camera steady and move closer to the animal.");
+      } else if (detail?.error === "unsupported_breed") {
+        setPrediction(null);
+        setError("Frame skipped: this animal's breed is outside the model's reliable training set.");
+      } else if (detail?.error === "not_livestock") {
         setPrediction(null);
         setError(detail.message || "Frame skipped: please point the scanner at a cow, calf, bull, or buffalo.");
       } else {
