@@ -85,6 +85,7 @@ export default function UploadPage() {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [errorKind, setErrorKind] = useState("error");
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -108,6 +109,7 @@ export default function UploadPage() {
         return URL.createObjectURL(selected);
       });
       setError("");
+      setErrorKind("error");
       setFile(selected);
     },
     []
@@ -129,6 +131,7 @@ export default function UploadPage() {
     });
     setFile(null);
     setError("");
+    setErrorKind("error");
     setProgress(0);
   };
 
@@ -136,11 +139,13 @@ export default function UploadPage() {
     event.preventDefault();
     if (!file) {
       setError("Please select an image first.");
+      setErrorKind("error");
       return;
     }
 
     setLoading(true);
     setError("");
+    setErrorKind("error");
     setProgress(12);
 
     // Indeterminate work, shown as motion. Caps below 100 so it never
@@ -157,17 +162,22 @@ export default function UploadPage() {
       setProgress(0);
       const detail = err?.response?.data?.detail;
       if (detail?.error === "image_too_blurry") {
+        setErrorKind("blurry");
         setError("That image is too blurry to classify. Try better light or a steadier shot.");
       } else if (detail?.error === "unsupported_breed") {
+        setErrorKind("uncertain");
         setError(
-          "This looks like livestock, but its breed is outside the model's reliable training set. " +
-          "It was not saved as a prediction."
+          "Livestock was detected, but the breed could not be confirmed reliably. " +
+          "This photo was not saved as a breed result."
         );
       } else if (detail?.error === "not_livestock") {
+        setErrorKind("error");
         setError(detail.message || "Please upload an image that clearly contains a cow, bull, calf, or buffalo.");
       } else if (err?.response?.status === 503) {
+        setErrorKind("error");
         setError("No model is loaded on the server yet, so no breed can be predicted.");
       } else {
+        setErrorKind("error");
         setError(typeof detail === "string" ? detail : "Prediction failed. Please try again.");
       }
     } finally {
@@ -281,7 +291,20 @@ export default function UploadPage() {
             </div>
           )}
 
-          {error && <Alert tone="danger" title="Could not analyse that image">{error}</Alert>}
+          {error && (
+            <Alert
+              tone={errorKind === "uncertain" ? "warning" : "danger"}
+              title={
+                errorKind === "uncertain"
+                  ? "Livestock detected, breed not confirmed"
+                  : errorKind === "blurry"
+                    ? "Image rejected: too blurry"
+                    : "Could not analyse that image"
+              }
+            >
+              {error}
+            </Alert>
+          )}
         </div>
 
         <aside className="stack stack--4">
