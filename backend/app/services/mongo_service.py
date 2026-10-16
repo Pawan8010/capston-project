@@ -102,7 +102,12 @@ def _stringify(doc: dict | None) -> dict | None:
 
 
 async def save_prediction(doc: dict) -> str:
-    doc = {**doc, "timestamp": utcnow(), "feedback_given": False}
+    # Normal predictions receive a current timestamp. Demo imports and trusted
+    # migrations may provide one explicitly so their activity timeline remains
+    # meaningful instead of collapsing into a single moment.
+    doc = {**doc}
+    doc.setdefault("timestamp", utcnow())
+    doc.setdefault("feedback_given", False)
 
     if _mongo_ready():
         try:

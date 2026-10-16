@@ -28,14 +28,23 @@ L.Icon.Default.mergeOptions({
 const BREED_ORIGINS = {
   Buffalo_Banni: { coords: [23.75, 69.8], region: "Kutch, Gujarat" },
   Buffalo_Bhadawari: { coords: [26.75, 78.9], region: "Bhadawar, UP / MP" },
+  Buffalo_Chilika: { coords: [19.72, 85.32], region: "Chilika lake, Odisha" },
   Buffalo_Jaffrabadi: { coords: [21.0, 70.8], region: "Gir forest, Gujarat" },
+  Buffalo_Kalahandi: { coords: [19.91, 83.16], region: "Kalahandi, Odisha" },
+  Buffalo_Manda: { coords: [18.81, 82.71], region: "Koraput, Odisha" },
+  Buffalo_Marathwadi: { coords: [19.84, 75.88], region: "Marathwada, Maharashtra" },
   Buffalo_Mehsana: { coords: [23.6, 72.4], region: "Mehsana, Gujarat" },
   Buffalo_Murrah: { coords: [28.9, 76.6], region: "Rohtak, Haryana" },
   Buffalo_Nagpuri: { coords: [21.15, 79.09], region: "Nagpur, Maharashtra" },
   Buffalo_Nili_Ravi: { coords: [31.3, 74.9], region: "Sutlej–Ravi, Punjab" },
   Buffalo_Surti: { coords: [21.17, 72.83], region: "Surat, Gujarat" },
   Buffalo_Toda: { coords: [11.4, 76.7], region: "Nilgiris, Tamil Nadu" },
+  Cattle_Alambadi: { coords: [12.14, 78.16], region: "Dharmapuri, Tamil Nadu" },
+  Cattle_Bachaur: { coords: [26.6, 85.5], region: "Sitamarhi, Bihar" },
+  Cattle_Badri: { coords: [30.32, 78.03], region: "Uttarakhand hills" },
   Cattle_Bargur: { coords: [11.6, 77.4], region: "Bargur hills, Tamil Nadu" },
+  Cattle_Belahi: { coords: [30.75, 76.8], region: "Shivalik foothills, Haryana" },
+  Cattle_Binjharpuri: { coords: [20.85, 86.34], region: "Jajpur, Odisha" },
   Cattle_Dangi: { coords: [20.75, 73.7], region: "Dang, Maharashtra" },
   Cattle_Hallikar: { coords: [12.6, 76.9], region: "Mysore, Karnataka" },
   Cattle_Hariana: { coords: [29.15, 76.3], region: "Rohtak–Hisar, Haryana" },
@@ -59,7 +68,7 @@ export default function BreedMap() {
   const loadHistory = async (showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const data = await getPredictionHistory({ limit: 200 });
+      const data = await getPredictionHistory({ limit: 100 });
       setHistory(data.predictions || []);
       setError("");
     } catch {

@@ -80,7 +80,7 @@ async def predict(
             error="unsupported_breed" if low_confidence else "not_livestock",
             message=(
                 "Livestock was detected, but its breed is outside the model's reliable training set. "
-                "No breed was assigned or saved."
+                "The closest supported breed is shown as a provisional match below; it was not saved as a confirmed prediction."
                 if low_confidence
                 else "No supported cattle or buffalo was detected in this image, so no breed was assigned or saved."
             ),

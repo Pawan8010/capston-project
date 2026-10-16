@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -11,6 +13,7 @@ from app.services.mongo_service import (
     get_user_predictions,
     save_prediction,
     set_feedback,
+    utcnow,
 )
 
 router = APIRouter()
@@ -43,51 +46,53 @@ async def seed_sample_data(
     user: dict = Depends(verify_token),
     predictor: BreedPredictor = Depends(get_predictor),
 ):
-    """Populate a local demo account with one removable sample per model breed."""
+    """Populate a local demo account with dated, removable samples per model breed."""
     if not settings.AUTH_ALLOW_MOCK:
         raise HTTPException(status_code=403, detail="Sample data is available only in local demo mode.")
 
     existing = await get_user_predictions(user_id=user["uid"], limit=100)
-    existing_breeds = {
-        record.get("primary_breed")
-        for record in existing
-        if record.get("source") == "sample"
-    }
+    existing_counts: dict[str, int] = {}
+    for record in existing:
+        if record.get("source") == "sample" and record.get("primary_breed"):
+            breed = record["primary_breed"]
+            existing_counts[breed] = existing_counts.get(breed, 0) + 1
     supported_breeds = list(predictor.labels)
+    records_per_breed = 3
     created = 0
 
     for index, primary in enumerate(supported_breeds):
-        if primary in existing_breeds:
-            continue
-        secondary = supported_breeds[(index + 1) % len(supported_breeds)]
-        confidence = round(93.5 - (index % 7) * 1.3, 1)
-        primary_info = get_breed_info(primary)
-        await save_prediction(
-            {
-                "user_id": user["uid"],
-                "image_url": "",
-                "primary_breed": primary,
-                "secondary_breed": secondary,
-                "confidence": confidence,
-                "crossbreed_ratio": round((100 - confidence) / 100, 3),
-                "all_probabilities": {primary: confidence, secondary: round(100 - confidence, 2)},
-                "all_predictions": {primary: confidence, secondary: round(100 - confidence, 2)},
-                "breed_info": primary_info,
-                "health_status": "Sample record",
-                "health_issue": None,
-                "latitude": None,
-                "longitude": None,
-                "inference_ms": 0,
-                "source": "sample",
-                "model_mode": "demo",
-            }
-        )
-        created += 1
+        for sample_index in range(existing_counts.get(primary, 0), records_per_breed):
+            secondary = supported_breeds[(index + sample_index + 1) % len(supported_breeds)]
+            confidence = round(94.0 - (index % 7) * 1.2 - sample_index * 1.5, 1)
+            primary_info = get_breed_info(primary)
+            await save_prediction(
+                {
+                    "user_id": user["uid"],
+                    "image_url": "",
+                    "primary_breed": primary,
+                    "secondary_breed": secondary,
+                    "confidence": confidence,
+                    "crossbreed_ratio": round((100 - confidence) / 100, 3),
+                    "all_probabilities": {primary: confidence, secondary: round(100 - confidence, 2)},
+                    "all_predictions": {primary: confidence, secondary: round(100 - confidence, 2)},
+                    "breed_info": primary_info,
+                    "health_status": "Sample record",
+                    "health_issue": None,
+                    "latitude": None,
+                    "longitude": None,
+                    "inference_ms": 0,
+                    "source": "sample",
+                    "model_mode": "demo",
+                    "timestamp": utcnow() - timedelta(days=index + sample_index * 8),
+                }
+            )
+            created += 1
 
     return {
         "created": created,
-        "existing": len(existing_breeds),
+        "existing": sum(existing_counts.values()),
         "total_supported_breeds": len(supported_breeds),
+        "records_per_breed": records_per_breed,
     }
 
 

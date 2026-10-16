@@ -82,7 +82,7 @@ export default function MyHerd() {
       setBreedInfo(table);
       setNotice(
         seeded.created
-          ? `${seeded.created} sample records loaded across ${seeded.total_supported_breeds} supported breeds. They are marked as sample in History.`
+          ? `${seeded.created} sample records loaded across ${seeded.total_supported_breeds} supported breeds. Each breed has ${seeded.records_per_breed} dated records, marked as sample in History.`
           : `Sample records are already loaded for all ${seeded.total_supported_breeds} supported breeds.`
       );
     } catch {

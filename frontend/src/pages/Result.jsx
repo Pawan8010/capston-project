@@ -45,7 +45,7 @@ export default function Result() {
         title={isAssessment ? "Image review" : (t("result") || "Prediction")}
         subtitle={
           isAssessment
-            ? "A clear photo was reviewed, but no unsupported or uncertain image is recorded as a breed prediction."
+            ? "A clear photo was reviewed. When livestock is detected, the closest trained breed is shown as a provisional comparison."
             : "Model output for the image you submitted, with husbandry guidance for the identified breed."
         }
         actions={

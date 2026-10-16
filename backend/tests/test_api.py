@@ -197,9 +197,10 @@ def test_local_demo_can_seed_clearly_labelled_sample_records():
     assert response.status_code == 200
     assert seeded["created"] >= 0
     assert seeded["total_supported_breeds"] >= 2
+    assert seeded["records_per_breed"] == 3
     assert history.status_code == 200
     sample_records = [row for row in history.json()["predictions"] if row.get("source") == "sample"]
-    assert len(sample_records) == seeded["total_supported_breeds"]
+    assert len(sample_records) == seeded["total_supported_breeds"] * seeded["records_per_breed"]
 
 
 def test_admin_routes_reject_non_admin():
