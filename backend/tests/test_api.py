@@ -32,11 +32,12 @@ def assert_prediction_shape(data: dict) -> None:
 
 
 def assert_rejected_prediction_response(response) -> bool:
-    if response.status_code != 400:
+    if response.status_code != 200:
         return False
-    detail = response.json().get("detail", {})
-    assert detail.get("error") in {"not_livestock", "unsupported_breed"}
-    assert "message" in detail
+    detail = response.json()
+    assert detail.get("analysis_status") in {"not_livestock", "unsupported_breed"}
+    assert "analysis_message" in detail
+    assert detail["saved"] is False
     return True
 
 

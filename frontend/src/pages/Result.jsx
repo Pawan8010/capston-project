@@ -26,6 +26,8 @@ export default function Result() {
 
   if (!result) return null;
 
+  const isAssessment = result.analysis_status && result.analysis_status !== "breed_identified";
+
   const handleDownload = () => {
     const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -39,9 +41,13 @@ export default function Result() {
   return (
     <AppShell title={t("result")}>
       <PageHeader
-        eyebrow="Analysis complete"
-        title={t("result") || "Prediction"}
-        subtitle="Model output for the image you submitted, with husbandry guidance for the identified breed."
+        eyebrow={isAssessment ? "Image assessment" : "Analysis complete"}
+        title={isAssessment ? "Image review" : (t("result") || "Prediction")}
+        subtitle={
+          isAssessment
+            ? "A clear photo was reviewed, but no unsupported or uncertain image is recorded as a breed prediction."
+            : "Model output for the image you submitted, with husbandry guidance for the identified breed."
+        }
         actions={
           <>
             <Button variant="ghost" icon={Download} onClick={handleDownload}>

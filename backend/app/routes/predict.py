@@ -14,6 +14,27 @@ import time
 router = APIRouter()
 
 
+def image_assessment_result(
+    *,
+    error: str,
+    message: str,
+    gate: dict,
+    filename: str | None,
+    supported_breeds: list[str],
+    inference_ms: float,
+) -> dict:
+    """Return a useful review for a clear image that cannot receive a breed."""
+    return {
+        "analysis_status": error,
+        "analysis_message": message,
+        "livestock_gate": gate,
+        "supported_breeds": supported_breeds,
+        "filename": filename,
+        "inference_ms": inference_ms,
+        "saved": False,
+    }
+
+
 @router.post("/")
 async def predict(
     file: UploadFile = File(..., description="Livestock image (JPG/PNG/WEBP)"),
@@ -51,19 +72,19 @@ async def predict(
     except LivestockValidationError as exc:
         gate = exc.gate_result
         low_confidence = gate.get("status") == "low_confidence"
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "unsupported_breed" if low_confidence else "not_livestock",
-                "message": (
-                    "This appears to be livestock, but the model cannot identify its breed reliably. "
-                    "Try a clearer side-on photo or use a breed included in the current model."
-                    if low_confidence
-                    else str(exc)
-                ),
-                "livestock_gate": gate,
-                "supported_breeds": predictor.labels if low_confidence else None,
-            },
+        inference_ms = round((time.perf_counter() - start) * 1000, 2)
+        return image_assessment_result(
+            error="unsupported_breed" if low_confidence else "not_livestock",
+            message=(
+                "Livestock was detected, but its breed is outside the model's reliable training set. "
+                "No breed was assigned or saved."
+                if low_confidence
+                else "No supported cattle or buffalo was detected in this image, so no breed was assigned or saved."
+            ),
+            gate=gate,
+            filename=file.filename,
+            supported_breeds=predictor.labels,
+            inference_ms=inference_ms,
         )
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -95,4 +116,6 @@ async def predict(
     
     inserted_id = await save_prediction(doc)
     result["id"] = inserted_id
+    result["analysis_status"] = "breed_identified"
+    result["saved"] = True
     return result
