@@ -37,7 +37,7 @@ export default function MyHerd() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.allSettled([getPredictionHistory({ limit: 200 }), getBreeds()])
+    Promise.allSettled([getPredictionHistory({ limit: 100 }), getBreeds()])
       .then(([historyRequest, breedsRequest]) => {
         if (cancelled) return;
         if (historyRequest.status !== "fulfilled") {

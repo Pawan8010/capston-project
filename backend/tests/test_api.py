@@ -164,7 +164,7 @@ def test_auth_sync_ignores_client_supplied_role():
 
 def test_history_roundtrip_and_scoping():
     with TestClient(app) as client:
-        listed = client.get("/api/history/", headers=AUTH)
+        listed = client.get("/api/history/?limit=100", headers=AUTH)
         assert listed.status_code == 200
         assert "predictions" in listed.json()
 
