@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Activity, Droplets, Inbox, Search, Sun, Upload as UploadIcon } from "lucide-react";
+import { Activity, Droplets, Inbox, Search, Sparkles, Sun, Upload as UploadIcon } from "lucide-react";
 import AppShell from "../components/layout/AppShell";
 import PageHeader from "../components/layout/PageHeader";
-import { getBreeds, getPredictionHistory } from "../services/api";
+import { getBreeds, getPredictionHistory, seedSamplePredictions } from "../services/api";
 import { useLanguage } from "../context/LanguageContext";
 import { formatBreed } from "../utils/helpers";
 import {
@@ -32,6 +32,8 @@ export default function MyHerd() {
   const [breedInfo, setBreedInfo] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [seeding, setSeeding] = useState(false);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -62,6 +64,33 @@ export default function MyHerd() {
       cancelled = true;
     };
   }, []);
+
+  const loadSampleData = async () => {
+    setSeeding(true);
+    setError("");
+    try {
+      const seeded = await seedSamplePredictions();
+      const [historyData, breedData] = await Promise.all([
+        getPredictionHistory({ limit: 100 }),
+        getBreeds().catch(() => null),
+      ]);
+      setHistory(historyData.predictions || []);
+      const table = {};
+      (breedData?.breeds || []).forEach((breed) => {
+        table[breed.name] = breed;
+      });
+      setBreedInfo(table);
+      setNotice(
+        seeded.created
+          ? `${seeded.created} sample records loaded across ${seeded.total_supported_breeds} supported breeds. They are marked as sample in History.`
+          : `Sample records are already loaded for all ${seeded.total_supported_breeds} supported breeds.`
+      );
+    } catch {
+      setError("Could not load sample data. Confirm the local API is running, then try again.");
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const groups = useMemo(() => {
     const byBreed = new Map();
@@ -100,14 +129,20 @@ export default function MyHerd() {
         title={t("my_herd") || "My herd"}
         subtitle="Breeds you have identified, grouped from your scan history."
         actions={
-          <Button to="/upload" variant="primary" icon={UploadIcon}>
-            Identify an animal
-          </Button>
+          <>
+            <Button variant="secondary" icon={Sparkles} loading={seeding} onClick={loadSampleData}>
+              Load sample data
+            </Button>
+            <Button to="/upload" variant="primary" icon={UploadIcon}>
+              Identify an animal
+            </Button>
+          </>
         }
       />
 
       <div className="stack stack--6">
         {error && <Alert tone="danger">{error}</Alert>}
+        {notice && <Alert tone="info">{notice}</Alert>}
 
         <div className="grid grid--3">
           <Stat label="Distinct breeds" count={groups.length} loading={loading} />
@@ -150,9 +185,14 @@ export default function MyHerd() {
                       Clear search
                     </Button>
                   ) : (
-                    <Button to="/upload" variant="primary" icon={UploadIcon}>
-                      Identify your first animal
-                    </Button>
+                    <div className="row row--wrap">
+                      <Button variant="secondary" icon={Sparkles} loading={seeding} onClick={loadSampleData}>
+                        Load sample data
+                      </Button>
+                      <Button to="/upload" variant="primary" icon={UploadIcon}>
+                        Identify your first animal
+                      </Button>
+                    </div>
                   )
                 }
               >

@@ -184,6 +184,20 @@ def test_history_roundtrip_and_scoping():
         assert feedback.status_code == 404
 
 
+def test_local_demo_can_seed_clearly_labelled_sample_records():
+    with TestClient(app) as client:
+        response = client.post("/api/history/sample-data", headers=AUTH)
+        seeded = response.json()
+        history = client.get("/api/history/?limit=100", headers=AUTH)
+
+    assert response.status_code == 200
+    assert seeded["created"] >= 0
+    assert seeded["total_supported_breeds"] >= 2
+    assert history.status_code == 200
+    sample_records = [row for row in history.json()["predictions"] if row.get("source") == "sample"]
+    assert len(sample_records) == seeded["total_supported_breeds"]
+
+
 def test_admin_routes_reject_non_admin():
     with TestClient(app) as client:
         assert client.get("/api/admin/stats", headers=AUTH).status_code == 403

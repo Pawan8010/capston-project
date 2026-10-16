@@ -68,6 +68,12 @@ export const getPredictionHistory = async (params) => {
   return response.data;
 };
 
+/** Add clearly labelled records for exercising the local demo workspace. */
+export const seedSamplePredictions = async () => {
+  const response = await api.post("/api/history/sample-data");
+  return response.data;
+};
+
 /**
  * Get a single prediction record by ID
  */
